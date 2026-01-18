@@ -17,6 +17,9 @@ def stop_nfs():
     except Exception as e:
         print(f"Error during shutdown: {e}")
 
+def DEMO_move_to_stool():
+    scanner.planar_move_to(-500.0, -500.0)
+
 # This is the correct way to register the shutdown hook
 app.on_shutdown(stop_nfs)
 
@@ -174,11 +177,8 @@ if __name__ in {"__main__", "__mp_main__"}:
         ui.button('ReHome', on_click=lambda: safe_move(rehome))
 
     with ui.button_group():
-        ui.button('TEST: go to stool position', on_click=lambda: safe_move(DEMO_move_to_stool))
-        ui.button('Set stool reference', on_click=lambda: scanner.set_stool_reference)
         height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')
-        ui.button('Set height offset', on_click=lambda: scanner.set_height_offset(height_input.value))
-        ui.button('Switch to WCS', on_click=lambda: scanner.set_working_coordinate_system)
+        ui.button('Set height offset', on_click=lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value))
 
     with ui.button():
         greyable_buttons.append(ui.button('Zero NFS', color='orange', on_click=scanner.set_as_zero))
@@ -246,17 +246,11 @@ if __name__ in {"__main__", "__mp_main__"}:
         if pos is not None:
             position_label.set_text(f'Position: {pos}')
 
-            # Update Rotation Gauge
-            gauge_rot.options['series'][0]['data'] = [pos.t()]
-            gauge_rot.update()
-
-            # Update In/Out Bar
-            gauge_inout.options['series'][0]['data'] = [pos.r()]
-            gauge_inout.update()
-
-            # Update Up/Down Column
-            gauge_updown.options['series'][0]['data'] = [pos.z()]
-            gauge_updown.update()
+            # We call the chart's update method directly. 
+            # This performs a "soft" update of the data points.
+            gauge_rot.run_method('update', {'series': [{'data': [pos.t()]}]})
+            gauge_inout.run_method('update', {'series': [{'data': [pos.r()]}]})
+            gauge_updown.run_method('update', {'series': [{'data': [pos.z()]}]})
         else:
             position_label.set_text('No position available')
 

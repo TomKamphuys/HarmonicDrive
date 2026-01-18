@@ -1,59 +1,16 @@
-2025-12-21 11:38:21.096 | INFO     | nfs.loader:_load_plugins:82 - Loading plugin: nfs.plugins.spherical_measurement_points_arcs_random
-2025-12-21 11:38:21.096 | INFO     | nfs.loader:_load_plugins:82 - Loading plugin: nfs.plugins.file_measurement_points
-2025-12-21 11:38:21.097 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[G28:0.000,0.000,0.000]
-2025-12-21 11:38:21.097 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[G30:0.000,0.000,0.000]
-2025-12-21 11:38:21.102 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[G92:0.000,0.000,0.000]
-2025-12-21 11:38:21.102 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[TLO:0.000]
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[PRB:0.000,0.000,0.000:0]
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_hash_stateupdate            data={'G54': (-5.0, -5.0, -5.0), 'G55': (0.0, 0.0, 0.0), 'G56': (0.0, 0.0, 0.0), 'G57': (0.0, 0.0, 0.0), 'G58': (0.0, 0.0, 0.0), 'G59': (0.0, 0.0, 0.0), 'G28': (0.0, 0.0, 0.0), 'G30': (0.0, 0.0, 0.0), 'G92': (0.0, 0.0, 0.0), 'TLO': (0.0,), 'PRB': (0.0, 0.0, 0.0)}
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_probe                       data=(0.0, 0.0, 0.0)
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:79 - set OK
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_rx_buffer_percent           data=0
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:79 - set OK
-2025-12-21 11:38:21.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_rx_buffer_percent           data=0
-2025-12-21 11:38:21.115 | INFO     | nfs.nfs:_clear_position_log:45 - Position log file cleared: measurement_positions.txt
-2025-12-21 11:38:21.278 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_write                       data=$G
+2026-01-17 14:29:53.418 | INFO     | nfs.loader:_load_plugins:82 - Loading plugin: nfs.plugins.spherical_measurement_points_arcs_random
+2026-01-17 14:29:53.419 | INFO     | nfs.loader:_load_plugins:82 - Loading plugin: nfs.plugins.file_measurement_points
+2026-01-17 14:29:53.445 | INFO     | nfs.nfs:_clear_position_log:45 - Position log file cleared: measurement_positions.txt
+2026-01-17 14:30:00.211 | TRACE    | nfs.grbl_controller:send:212 - GrblStreamerClientConnection: Sending message: $H
 
-2025-12-21 11:38:21.304 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]
-2025-12-21 11:38:21.304 | TRACE    | nfs.grbl_controller:on_grbl_event:79 - set OK
-2025-12-21 11:38:21.304 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_rx_buffer_percent           data=0
-2025-12-21 11:38:21.490 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_stateupdate                 data=Idle, (0, 0, 0), (5.0, 5.0, 5.0)
-2025-12-21 11:38:21.680 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_write                       data=$G
+2026-01-17 14:30:00.212 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_write                       data=$H
 
-2025-12-21 11:38:21.686 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=[GC:G0 G54 G17 G21 G90 G94 M5 M9 T0 F0 S0]
-2025-12-21 11:38:21.687 | TRACE    | nfs.grbl_controller:on_grbl_event:79 - set OK
-2025-12-21 11:38:21.687 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_rx_buffer_percent           data=0
-2025-12-21 11:38:23.697 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_standstill                  data=
-2025-12-21 11:38:29.104 | TRACE    | nfs.grbl_controller:send:186 - GrblStreamerClientConnection: Sending message: $H
-
-2025-12-21 11:38:29.105 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_write                       data=$H
-
-2025-12-21 11:38:29.105 | TRACE    | nfs.grbl_controller:send:245 - Sending message to GRBL device: $H
-2025-12-21 11:38:29.115 | TRACE    | nfs.grbl_controller:_wait_for_ack:279 - Received: ok
-2025-12-21 11:38:29.116 | WARNING  | nfs.scanner:_set_as:116 - Set as: G92 X0 Y0 Z0
-2025-12-21 11:38:29.116 | TRACE    | nfs.grbl_controller:send:186 - GrblStreamerClientConnection: Sending message: G92 X0 Y0 Z0
-
-2025-12-21 11:38:29.116 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_write                       data=G92X0Y0Z0
-
-2025-12-21 11:38:29.116 | TRACE    | nfs.grbl_controller:send:245 - Sending message to GRBL device: G92 X0 Y0 Z0
-2025-12-21 11:38:35.990 | INFO     | nfs.grbl_controller:shutdown:240 - Disconnecting from GRBL device
-2025-12-21 11:38:35.991 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 10, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 515, "mygrbl: Please wait until polling thread has joined...">
-2025-12-21 11:38:36.143 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 10, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 1124, "mygrbl: Polling has been stopped">
-2025-12-21 11:38:36.144 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 10, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 517, "mygrbl: Polling thread has successfully  joined...">
-2025-12-21 11:38:36.145 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer.interface, 20, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\interface.py, 91, "%s: stop()">
-2025-12-21 11:38:36.378 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_stateupdate                 data=Alarm, (0, 0, 0), (5.0, 5.0, 5.0)
-2025-12-21 11:38:36.378 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=ALARM:9
-2025-12-21 11:38:36.378 | ERROR    | nfs.grbl_controller:on_grbl_event:88 - ERROR: Alarm!
-2025-12-21 11:38:36.378 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_alarm                       data=ALARM:9
-2025-12-21 11:38:36.378 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer.interface, 20, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\interface.py, 93, "%s: JOINED thread">
-2025-12-21 11:38:36.379 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer.interface, 20, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\interface.py, 94, "%s: Closing port">
-2025-12-21 11:38:36.384 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 10, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 431, "mygrbl: Please wait until reading thread has joined...">
-2025-12-21 11:38:36.384 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_read                        data=dummy_msg_for_joining_thread
-2025-12-21 11:38:36.386 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 10, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 436, "mygrbl: Reading thread successfully joined.">
-2025-12-21 11:38:36.388 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_disconnected                data=
-2025-12-21 11:38:36.387 | TRACE    | nfs.grbl_controller:_wait_for_ack:279 - Received: ok
-2025-12-21 11:38:36.389 | TRACE    | nfs.grbl_controller:send:186 - GrblStreamerClientConnection: Sending message: $10=0
-
-2025-12-21 11:38:36.389 | TRACE    | nfs.grbl_controller:on_grbl_event:92 - MY CALLBACK: event=on_log                         data=<LogRecord: GrblStreamer, 40, C:\Users\User\PycharmProjects\HarmonicDrive\.venv\Lib\site-packages\grbl_streamer\__init__.py, 599, "Grbl is in ALARM state. Will not send $10=0
-.">
-2025-12-21 11:38:36.390 | TRACE    | nfs.grbl_controller:send:245 - Sending message to GRBL device: $10=0
+2026-01-17 14:30:00.213 | TRACE    | nfs.grbl_controller:send:277 - Sending message to GRBL device: $H
+2026-01-17 14:30:00.217 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_stateupdate                 data=Home, (0, 0, 0), (463.001, -90.0, -9.349)
+2026-01-17 14:30:01.201 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_stateupdate                 data=Alarm, (0, 0, 0), (463.001, -90.0, -9.349)
+2026-01-17 14:30:01.201 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_read                        data=ALARM:8
+2026-01-17 14:30:01.202 | ERROR    | nfs.grbl_controller:on_grbl_event:115 - ERROR: Alarm!
+2026-01-17 14:30:01.202 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_alarm                       data=ALARM:8
+2026-01-17 14:30:01.208 | TRACE    | nfs.grbl_controller:_wait_for_ack:329 - Received: ok
+2026-01-17 14:30:01.301 | TRACE    | nfs.grbl_controller:on_grbl_event:119 - MY CALLBACK: event=on_read                        data=GrblHAL 1.1f ['$' or '$HELP' for help]
+2026-01-17 14:32:13.652 | INFO     | nfs.grbl_controller:shutdown:272 - Disconnecting from GRBL device

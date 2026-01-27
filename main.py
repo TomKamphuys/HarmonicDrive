@@ -6,6 +6,18 @@ from pathlib import Path
 
 from nfs import NearFieldScannerFactory, ScannerFactory
 
+# Flashing animation for ALARM indicator
+ui.add_css("""
+@keyframes alarm_blink {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+.alarm_blink {
+  animation: alarm_blink 0.6s linear infinite;
+}
+""")
+
 def start_nfs():
     pass
 
@@ -239,21 +251,59 @@ if __name__ in {"__main__", "__mp_main__"}:
                 'series': [{'name': 'Position', 'data': [0], 'color': '#9c27b0'}]
             })
 
-    position_label = ui.label()
+    with ui.row().classes('w-full justify-center items-center gap-8'):
+        alarm_badge = ui.badge('ALARM').props('color=red outline')
+        alarm_badge.visible = False  # off until alarm happens
+
+        position_label = ui.label('Position: —')
+        state_label = ui.label('State: —')
+
+    def _get_raw_state_string():
+        """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
+        try:
+            st = scanner.get_state()
+            return None if st is None else str(st)
+        except Exception:
+            return None
+
+    def _scanner_has_alarm() -> bool:
+        """Alarm is active when GrblMachineState == ALARM."""
+        try:
+            st = scanner.get_state()
+            if st is None:
+                return False
+            # Works whether enum stringifies as 'ALARM' or 'GrblMachineState.ALARM'
+            name = getattr(st, 'name', str(st))
+            return str(name).upper() == 'ALARM'
+        except Exception:
+            return False
 
     def update_scanner_position():
         pos = scanner.get_position()
         if pos is not None:
             position_label.set_text(f'Position: {pos}')
 
-            # We call the chart's update method directly. 
+            # We call the chart's update method directly.
             # This performs a "soft" update of the data points.
             gauge_rot.run_method('update', {'series': [{'data': [pos.t()]}]})
             gauge_inout.run_method('update', {'series': [{'data': [pos.r()]}]})
             gauge_updown.run_method('update', {'series': [{'data': [pos.z()]}]})
         else:
-            position_label.set_text('No position available')
+            position_label.set_text('Position: (no position available)')
 
+        raw_state = _get_raw_state_string()
+        if raw_state is not None:
+            state_label.set_text(f'State: {raw_state}')
+        else:
+            state_label.set_text('State: (unavailable)')
+
+        # Alarm indicator: flash red in ALARM, turn off otherwise
+        if _scanner_has_alarm():
+            alarm_badge.visible = True
+            alarm_badge.classes(add='alarm_blink')
+        else:
+            alarm_badge.visible = False
+            alarm_badge.classes(remove='alarm_blink')
 
     ui.timer(0.5, update_scanner_position)
 

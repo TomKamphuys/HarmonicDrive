@@ -60,6 +60,19 @@ async def async_task():
             button.enable()
 
 
+async def async_single_measurement_task():
+    ui.notify('Single measurement started')
+    for button in greyable_buttons:
+        button.disable()
+
+    try:
+        await run.io_bound(nfs.take_single_measurement)
+    finally:
+        ui.notify('Single measurement finished')
+        for button in greyable_buttons:
+            button.enable()
+
+
 async def safe_move(func, *args):
     """Wrapper to disable UI, run a hardware command, then re-enable UI"""
     for button in greyable_buttons:
@@ -198,6 +211,7 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     with ui.button():
         ui.button('Start measurements', on_click=async_task)
+        greyable_buttons.append(ui.button('Take single measurement', on_click=async_single_measurement_task))
 
     with ui.row().classes('w-full justify-center items-center gap-12'):
         # --- ROTATION GAUGE ---

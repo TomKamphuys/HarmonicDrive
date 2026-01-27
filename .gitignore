@@ -52,7 +52,7 @@ htmlcov/
 # OS / miscellaneous
 # =========================
 .DS_Store
-Thumbs.db
+Thumbs.dbgit
 ehthumbs.db
 Desktop.ini
 

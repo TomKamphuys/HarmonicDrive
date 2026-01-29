@@ -10,3 +10,8 @@ gestart
 
 
 logfile staat op diyaudio 
+
+
+Jan stuurt ook de output van de sounddevices op, zodat ik kan kijken welke hij moet kiezen (babyface pro (analoog 1 en 2; 3 en 4 uit))
+- code aangepast zodat aparte input en output device kan worden gekozen
+

@@ -1,4 +1,5 @@
 from nicegui import app, ui, run  # Add 'app' to your imports
+import argparse
 import numpy as np
 import asyncio
 import time
@@ -166,7 +167,14 @@ async def watch_file():
 
 
 if __name__ in {"__main__", "__mp_main__"}:
-    config_file = './config.ini'
+    parser = argparse.ArgumentParser(description='Near-field scanner UI')
+    parser.add_argument(
+        '--config',
+        default='config.ini',
+        help='Path to the configuration file',
+    )
+    args = parser.parse_args()
+    config_file = args.config
     scanner = ScannerFactory.create(config_file)
     nfs = NearFieldScannerFactory.create(scanner, config_file)
 
@@ -175,144 +183,146 @@ if __name__ in {"__main__", "__mp_main__"}:
     # Plot axis limits
     AXIS_LIMIT = 400
 
-    # Whole app layout: left = controls + dials + plot, right = log (starts at very top)
-    with ui.row().classes('w-full h-screen items-stretch gap-6 flex flex-col md:flex-row md:flex-nowrap'):
-        with ui.column().classes('w-full md:w-1/2 h-full min-w-0 overflow-auto'):
-            with ui.button_group():
-                greyable_buttons.append(ui.button(' 1 degree  CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 1)))
-                greyable_buttons.append(ui.button('10 degrees CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 10)))
-                greyable_buttons.append(ui.button(' 1 degree  CW', on_click=lambda: safe_move(scanner.rotate_cw, 1)))
-                greyable_buttons.append(ui.button('10 degrees CW', on_click=lambda: safe_move(scanner.rotate_cw, 10)))
+    # Whole app layout: left = controls + dials + plot, right = log (user-resizable)
+    with ui.splitter(value=50).classes('w-full h-screen items-stretch') as splitter:
+        with splitter.before:
+            with ui.column().classes('w-full h-full min-w-0 overflow-auto'):
+                with ui.button_group():
+                    greyable_buttons.append(ui.button(' 1 degree  CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 1)))
+                    greyable_buttons.append(ui.button('10 degrees CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 10)))
+                    greyable_buttons.append(ui.button(' 1 degree  CW', on_click=lambda: safe_move(scanner.rotate_cw, 1)))
+                    greyable_buttons.append(ui.button('10 degrees CW', on_click=lambda: safe_move(scanner.rotate_cw, 10)))
 
-            with ui.button_group():
-                greyable_buttons.append(ui.button('In  1mm', on_click=lambda: safe_move(scanner.move_in, 1)))
-                greyable_buttons.append(ui.button('In 10mm', on_click=lambda: safe_move(scanner.move_in, 10)))
-                greyable_buttons.append(ui.button('Out  1mm', on_click=lambda: safe_move(scanner.move_out, 1)))
-                greyable_buttons.append(ui.button('Out 10mm', on_click=lambda: safe_move(scanner.move_out, 10)))
+                with ui.button_group():
+                    greyable_buttons.append(ui.button('In  1mm', on_click=lambda: safe_move(scanner.move_in, 1)))
+                    greyable_buttons.append(ui.button('In 10mm', on_click=lambda: safe_move(scanner.move_in, 10)))
+                    greyable_buttons.append(ui.button('Out  1mm', on_click=lambda: safe_move(scanner.move_out, 1)))
+                    greyable_buttons.append(ui.button('Out 10mm', on_click=lambda: safe_move(scanner.move_out, 10)))
 
-            with ui.button_group():
-                greyable_buttons.append(ui.button('Up  1mm', on_click=lambda: safe_move(scanner.move_up, 1)))
-                greyable_buttons.append(ui.button('Up 10mm', on_click=lambda: safe_move(scanner.move_up, 10)))
-                greyable_buttons.append(ui.button('Down  1mm', on_click=lambda: safe_move(scanner.move_down, 1)))
-                greyable_buttons.append(ui.button('Down 10mm', on_click=lambda: safe_move(scanner.move_down, 10)))
+                with ui.button_group():
+                    greyable_buttons.append(ui.button('Up  1mm', on_click=lambda: safe_move(scanner.move_up, 1)))
+                    greyable_buttons.append(ui.button('Up 10mm', on_click=lambda: safe_move(scanner.move_up, 10)))
+                    greyable_buttons.append(ui.button('Down  1mm', on_click=lambda: safe_move(scanner.move_down, 1)))
+                    greyable_buttons.append(ui.button('Down 10mm', on_click=lambda: safe_move(scanner.move_down, 10)))
 
-            with ui.button_group():
-                ui.button('Start NFS', color='green', on_click=start_nfs)
-                ui.button('Stop NFS', color='red', on_click=stop_nfs)
-                ui.button('Home', on_click=lambda: safe_move(scanner.home))
-                ui.button('Clear Alarm', on_click=lambda: run.io_bound(scanner.clear_alarm))
-                ui.button('Soft Reset', on_click=lambda: run.io_bound(scanner.softreset))
-                ui.button('ReHome', on_click=lambda: safe_move(rehome))
+                with ui.button_group():
+                    ui.button('Start NFS', color='green', on_click=start_nfs)
+                    ui.button('Stop NFS', color='red', on_click=stop_nfs)
+                    ui.button('Home', on_click=lambda: safe_move(scanner.home))
+                    ui.button('Clear Alarm', on_click=lambda: run.io_bound(scanner.clear_alarm))
+                    ui.button('Soft Reset', on_click=lambda: run.io_bound(scanner.softreset))
+                    ui.button('ReHome', on_click=lambda: safe_move(rehome))
 
-            with ui.button_group():
-                height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')
-                ui.button(
-                    'Set height offset',
-                    on_click=lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value),
-                )
+                with ui.button_group():
+                    height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')
+                    ui.button(
+                        'Set height offset',
+                        on_click=lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value),
+                    )
 
-            # FIX: don't nest a button inside another button (that causes overlap)
-            greyable_buttons.append(ui.button('Zero NFS', color='orange', on_click=scanner.set_as_zero))
+                # FIX: don't nest a button inside another button (that causes overlap)
+                greyable_buttons.append(ui.button('Zero NFS', color='orange', on_click=scanner.set_as_zero))
 
-            with ui.button_group():
-                greyable_buttons.append(ui.button('Start measurements', on_click=async_task))
-                greyable_buttons.append(ui.button('Take single measurement', on_click=async_single_measurement_task))
+                with ui.button_group():
+                    greyable_buttons.append(ui.button('Start measurements', on_click=async_task))
+                    greyable_buttons.append(ui.button('Take single measurement', on_click=async_single_measurement_task))
 
-            with ui.row().classes('w-full justify-start items-center gap-12'):
-                # --- ROTATION GAUGE ---
-                with ui.column().classes('items-center'):
-                    ui.label('Rotation (deg)').classes('font-bold')
-                    gauge_rot = ui.highchart({
-                        'chart': {'type': 'gauge', 'height': 200, 'width': 200, 'backgroundColor': 'transparent'},
-                        'title': None,
-                        'pane': {'startAngle': -150, 'endAngle': 150, 'background': {'backgroundColor': '#f5f5f5', 'innerRadius': '60%', 'outerRadius': '100%', 'shape': 'arc'}},
-                        'yAxis': {
-                            'min': -360, 'max': 360,
-                            'minorTickInterval': 'auto', 'tickPixelInterval': 30,
-                            'plotBands': [
-                                {'from': -360, 'to': -300, 'color': '#ff4d4d'},  # Danger zone
-                                {'from': 300, 'to': 360, 'color': '#ff4d4d'}
-                            ],
-                            'title': {'text': '°'}
-                        },
-                        'series': [{'name': 'Rotation', 'data': [0], 'tooltip': {'valueSuffix': ' deg'}}]
-                    }, extras=['highcharts-more'])
+                with ui.row().classes('w-full justify-start items-center gap-12'):
+                    # --- ROTATION GAUGE ---
+                    with ui.column().classes('items-center'):
+                        ui.label('Rotation (deg)').classes('font-bold')
+                        gauge_rot = ui.highchart({
+                            'chart': {'type': 'gauge', 'height': 200, 'width': 200, 'backgroundColor': 'transparent'},
+                            'title': None,
+                            'pane': {'startAngle': -150, 'endAngle': 150, 'background': {'backgroundColor': '#f5f5f5', 'innerRadius': '60%', 'outerRadius': '100%', 'shape': 'arc'}},
+                            'yAxis': {
+                                'min': -360, 'max': 360,
+                                'minorTickInterval': 'auto', 'tickPixelInterval': 30,
+                                'plotBands': [
+                                    {'from': -360, 'to': -300, 'color': '#ff4d4d'},  # Danger zone
+                                    {'from': 300, 'to': 360, 'color': '#ff4d4d'}
+                                ],
+                                'title': {'text': '°'}
+                            },
+                            'series': [{'name': 'Rotation', 'data': [0], 'tooltip': {'valueSuffix': ' deg'}}]
+                        }, extras=['highcharts-more'])
 
-                # --- IN/OUT INDICATOR (Horizontal Linear) ---
-                with ui.column().classes('items-center'):
-                    ui.label('In/Out (mm)').classes('font-bold')
-                    gauge_inout = ui.highchart({
-                        'chart': {'type': 'bar', 'height': 120, 'width': 300, 'backgroundColor': 'transparent'},
-                        'title': None,
-                        'xAxis': {'categories': ['In/Out'], 'visible': False},
-                        'yAxis': {
-                            'min': -800, 'max': 800,
-                            'title': {'text': 'Distance (mm)'},
-                            'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
-                        },
-                        'legend': {'enabled': False},
-                        'series': [{'name': 'Position', 'data': [0], 'color': '#2196f3'}]
-                    })
+                    # --- IN/OUT INDICATOR (Horizontal Linear) ---
+                    with ui.column().classes('items-center'):
+                        ui.label('In/Out (mm)').classes('font-bold')
+                        gauge_inout = ui.highchart({
+                            'chart': {'type': 'bar', 'height': 120, 'width': 300, 'backgroundColor': 'transparent'},
+                            'title': None,
+                            'xAxis': {'categories': ['In/Out'], 'visible': False},
+                            'yAxis': {
+                                'min': -800, 'max': 800,
+                                'title': {'text': 'Distance (mm)'},
+                                'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
+                            },
+                            'legend': {'enabled': False},
+                            'series': [{'name': 'Position', 'data': [0], 'color': '#2196f3'}]
+                        })
 
-                # --- UP/DOWN INDICATOR (Vertical Linear) ---
-                with ui.column().classes('items-center'):
-                    ui.label('Up/Down (mm)').classes('font-bold')
-                    gauge_updown = ui.highchart({
-                        'chart': {'type': 'column', 'height': 300, 'width': 120, 'backgroundColor': 'transparent'},
-                        'title': None,
-                        'xAxis': {'categories': ['Up/Down'], 'visible': False},
-                        'yAxis': {
-                            'min': -800, 'max': 800,
-                            'title': {'text': 'Height (mm)'},
-                            'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
-                        },
-                        'legend': {'enabled': False},
-                        'series': [{'name': 'Position', 'data': [0], 'color': '#9c27b0'}]
-                    })
+                    # --- UP/DOWN INDICATOR (Vertical Linear) ---
+                    with ui.column().classes('items-center'):
+                        ui.label('Up/Down (mm)').classes('font-bold')
+                        gauge_updown = ui.highchart({
+                            'chart': {'type': 'column', 'height': 300, 'width': 120, 'backgroundColor': 'transparent'},
+                            'title': None,
+                            'xAxis': {'categories': ['Up/Down'], 'visible': False},
+                            'yAxis': {
+                                'min': -800, 'max': 800,
+                                'title': {'text': 'Height (mm)'},
+                                'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
+                            },
+                            'legend': {'enabled': False},
+                            'series': [{'name': 'Position', 'data': [0], 'color': '#9c27b0'}]
+                        })
 
-            with ui.row().classes('w-full justify-start items-center gap-8'):
-                alarm_badge = ui.badge('ALARM').props('color=red outline')
-                alarm_badge.visible = False  # off until alarm happens
+                with ui.row().classes('w-full justify-start items-center gap-8'):
+                    alarm_badge = ui.badge('ALARM').props('color=red outline')
+                    alarm_badge.visible = False  # off until alarm happens
 
-                position_label = ui.label('Position: —')
-                state_label = ui.label('State: —')
+                    position_label = ui.label('Position: —')
+                    state_label = ui.label('State: —')
 
-            plot = ui.matplotlib(figsize=(8, 6))
-            with plot.figure as fig:
-                update_plot()
+                plot = ui.matplotlib(figsize=(8, 6))
+                with plot.figure as fig:
+                    update_plot()
 
-        with ui.column().classes('w-full md:w-1/2 h-full min-w-0 flex flex-col'):
-            ui.label('Log (tail)').classes('font-bold')
-            log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto')
-            log_view.set_visibility(True)
+        with splitter.after:
+            with ui.column().classes('w-full h-full min-w-0 flex flex-col'):
+                ui.label('Log (tail)').classes('font-bold')
+                log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto')
+                log_view.set_visibility(True)
 
-            log_file = Path('scanner.log')
-            _log_tail_state = {'pos': 0}
+                log_file = Path('scanner.log')
+                _log_tail_state = {'pos': 0}
 
-            def tail_scanner_log():
-                try:
-                    if not log_file.exists():
-                        return
+                def tail_scanner_log():
+                    try:
+                        if not log_file.exists():
+                            return
 
-                    size = log_file.stat().st_size
-                    if size < _log_tail_state['pos']:
-                        # log rotated/truncated
-                        _log_tail_state['pos'] = 0
+                        size = log_file.stat().st_size
+                        if size < _log_tail_state['pos']:
+                            # log rotated/truncated
+                            _log_tail_state['pos'] = 0
 
-                    with log_file.open('r', encoding='utf-8', errors='replace') as f:
-                        f.seek(_log_tail_state['pos'])
-                        chunk = f.read()
-                        _log_tail_state['pos'] = f.tell()
+                        with log_file.open('r', encoding='utf-8', errors='replace') as f:
+                            f.seek(_log_tail_state['pos'])
+                            chunk = f.read()
+                            _log_tail_state['pos'] = f.tell()
 
-                    if not chunk:
-                        return
+                        if not chunk:
+                            return
 
-                    for line in chunk.splitlines():
-                        log_view.push(line)
-                except Exception as e:
-                    log_view.push(f'[tail error] {e}')
+                        for line in chunk.splitlines():
+                            log_view.push(line)
+                    except Exception as e:
+                        log_view.push(f'[tail error] {e}')
 
-            ui.timer(0.5, tail_scanner_log)
+                ui.timer(0.5, tail_scanner_log)
 
     def _get_raw_state_string():
         """scanner.get_state() returns a GrblMachineState enum; show its raw string."""

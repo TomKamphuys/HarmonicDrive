@@ -5,7 +5,31 @@ import asyncio
 import time
 from pathlib import Path
 
+from loguru import logger
+
 from nfs import NearFieldScannerFactory, ScannerFactory
+
+# --- Loguru: write UI click logs to the same scanner.log file (append) ---
+logger.remove()  # avoid duplicate console handlers if any
+logger.add(
+    "scanner.log",
+    level="INFO",
+    encoding="utf-8",
+    enqueue=True,           # thread/process-safe-ish; good with UI + io_bound
+    backtrace=False,
+    diagnose=False,
+    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}",
+)
+
+def log_button_click(label: str, handler):
+    """Wrap a NiceGUI on_click handler to log the click and then run it (sync or async)."""
+    async def _wrapped(*args, **kwargs):
+        logger.info("UI click: {}", label)
+        result = handler(*args, **kwargs)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+    return _wrapped
 
 # Flashing animation for ALARM indicator
 ui.add_css("""
@@ -50,7 +74,7 @@ async def async_task():
     ui.notify('Measurement started')
     for button in greyable_buttons:
         button.disable()
-    
+
     try:
         # run.io_bound keeps the UI responsive/connected
         await run.io_bound(nfs.take_measurement_set)
@@ -59,7 +83,6 @@ async def async_task():
         ui.notify('Measurement finished')
         for button in greyable_buttons:
             button.enable()
-
 
 async def async_single_measurement_task():
     ui.notify('Single measurement started')
@@ -73,7 +96,6 @@ async def async_single_measurement_task():
         for button in greyable_buttons:
             button.enable()
 
-
 async def safe_move(func, *args):
     """Wrapper to disable UI, run a hardware command, then re-enable UI"""
     for button in greyable_buttons:
@@ -84,6 +106,10 @@ async def safe_move(func, *args):
         for button in greyable_buttons:
             button.enable()
 
+async def zero_nfs_then_apply_height_offset(height_value: float):
+    """Zero NFS, then apply the given height offset above stool."""
+    await run.io_bound(scanner.set_as_zero)
+    await run.io_bound(scanner.set_speaker_center_above_stool, height_value)
 
 def load_measurement_data():
     """Load cylindrical coordinates from measurement_positions.txt and convert to azimuth/elevation"""
@@ -188,44 +214,56 @@ if __name__ in {"__main__", "__mp_main__"}:
         with splitter.before:
             with ui.column().classes('w-full h-full min-w-0 overflow-auto'):
                 with ui.button_group():
-                    greyable_buttons.append(ui.button(' 1 degree  CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 1)))
-                    greyable_buttons.append(ui.button('10 degrees CCW', on_click=lambda: safe_move(scanner.rotate_ccw, 10)))
-                    greyable_buttons.append(ui.button(' 1 degree  CW', on_click=lambda: safe_move(scanner.rotate_cw, 1)))
-                    greyable_buttons.append(ui.button('10 degrees CW', on_click=lambda: safe_move(scanner.rotate_cw, 10)))
+                    greyable_buttons.append(ui.button(' 1 degree  CCW', on_click=log_button_click('1 degree CCW', lambda: safe_move(scanner.rotate_ccw, 1))))
+                    greyable_buttons.append(ui.button('10 degrees CCW', on_click=log_button_click('10 degrees CCW', lambda: safe_move(scanner.rotate_ccw, 10))))
+                    greyable_buttons.append(ui.button(' 1 degree  CW', on_click=log_button_click('1 degree CW', lambda: safe_move(scanner.rotate_cw, 1))))
+                    greyable_buttons.append(ui.button('10 degrees CW', on_click=log_button_click('10 degrees CW', lambda: safe_move(scanner.rotate_cw, 10))))
 
                 with ui.button_group():
-                    greyable_buttons.append(ui.button('In  1mm', on_click=lambda: safe_move(scanner.move_in, 1)))
-                    greyable_buttons.append(ui.button('In 10mm', on_click=lambda: safe_move(scanner.move_in, 10)))
-                    greyable_buttons.append(ui.button('Out  1mm', on_click=lambda: safe_move(scanner.move_out, 1)))
-                    greyable_buttons.append(ui.button('Out 10mm', on_click=lambda: safe_move(scanner.move_out, 10)))
+                    greyable_buttons.append(ui.button('In  1mm', on_click=log_button_click('In 1mm', lambda: safe_move(scanner.move_in, 1))))
+                    greyable_buttons.append(ui.button('In 10mm', on_click=log_button_click('In 10mm', lambda: safe_move(scanner.move_in, 10))))
+                    greyable_buttons.append(ui.button('Out  1mm', on_click=log_button_click('Out 1mm', lambda: safe_move(scanner.move_out, 1))))
+                    greyable_buttons.append(ui.button('Out 10mm', on_click=log_button_click('Out 10mm', lambda: safe_move(scanner.move_out, 10))))
 
                 with ui.button_group():
-                    greyable_buttons.append(ui.button('Up  1mm', on_click=lambda: safe_move(scanner.move_up, 1)))
-                    greyable_buttons.append(ui.button('Up 10mm', on_click=lambda: safe_move(scanner.move_up, 10)))
-                    greyable_buttons.append(ui.button('Down  1mm', on_click=lambda: safe_move(scanner.move_down, 1)))
-                    greyable_buttons.append(ui.button('Down 10mm', on_click=lambda: safe_move(scanner.move_down, 10)))
+                    greyable_buttons.append(ui.button('Up  1mm', on_click=log_button_click('Up 1mm', lambda: safe_move(scanner.move_up, 1))))
+                    greyable_buttons.append(ui.button('Up 10mm', on_click=log_button_click('Up 10mm', lambda: safe_move(scanner.move_up, 10))))
+                    greyable_buttons.append(ui.button('Down  1mm', on_click=log_button_click('Down 1mm', lambda: safe_move(scanner.move_down, 1))))
+                    greyable_buttons.append(ui.button('Down 10mm', on_click=log_button_click('Down 10mm', lambda: safe_move(scanner.move_down, 10))))
 
                 with ui.button_group():
-                    ui.button('Start NFS', color='green', on_click=start_nfs)
-                    ui.button('Stop NFS', color='red', on_click=stop_nfs)
-                    ui.button('Home', on_click=lambda: safe_move(scanner.home))
-                    ui.button('Clear Alarm', on_click=lambda: run.io_bound(scanner.clear_alarm))
-                    ui.button('Soft Reset', on_click=lambda: run.io_bound(scanner.softreset))
-                    ui.button('ReHome', on_click=lambda: safe_move(rehome))
+                    ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
+                    ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
+                    ui.button('Home', on_click=log_button_click('Home', lambda: safe_move(scanner.home)))
+                    ui.button('Clear Alarm', on_click=log_button_click('Clear Alarm', lambda: run.io_bound(scanner.clear_alarm)))
+                    ui.button('Soft Reset', on_click=log_button_click('Soft Reset', lambda: run.io_bound(scanner.softreset)))
+                    ui.button('ReHome', on_click=log_button_click('ReHome', lambda: safe_move(rehome)))
 
                 with ui.button_group():
                     height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')
                     ui.button(
                         'Set height offset',
-                        on_click=lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value),
+                        on_click=log_button_click(
+                            'Set height offset',
+                            lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value),
+                        ),
                     )
 
                 # FIX: don't nest a button inside another button (that causes overlap)
-                greyable_buttons.append(ui.button('Zero NFS', color='orange', on_click=scanner.set_as_zero))
+                greyable_buttons.append(
+                    ui.button(
+                        'Zero NFS',
+                        color='orange',
+                        on_click=log_button_click(
+                            'Zero NFS',
+                            lambda: zero_nfs_then_apply_height_offset(height_input.value),
+                        ),
+                    )
+                )
 
                 with ui.button_group():
-                    greyable_buttons.append(ui.button('Start measurements', on_click=async_task))
-                    greyable_buttons.append(ui.button('Take single measurement', on_click=async_single_measurement_task))
+                    greyable_buttons.append(ui.button('Start measurements', on_click=log_button_click('Start measurements', async_task)))
+                    greyable_buttons.append(ui.button('Take single measurement', on_click=log_button_click('Take single measurement', async_single_measurement_task)))
 
                 with ui.row().classes('w-full justify-start items-center gap-12'):
                     # --- ROTATION GAUGE ---

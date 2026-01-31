@@ -41,6 +41,68 @@ ui.add_css("""
 .alarm_blink {
   animation: alarm_blink 0.6s linear infinite;
 }
+
+/* --- Jog button rows (like the reference image) --- */
+.jog-grid {
+  display: grid;
+  grid-template-columns: 64px repeat(4, 72px) 72px repeat(4, 72px);
+  gap: 6px;
+  align-items: center;
+}
+.jog-hdr {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+.jog-hdr-left  { grid-column: 2 / span 4; text-align: left; }
+.jog-hdr-stop  { grid-column: 6; text-align: center; }
+.jog-hdr-right { grid-column: 7 / span 4; text-align: right; }
+
+.jog-axis {
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.05;
+}
+.jog-unit {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #374151;
+  margin-top: 2px;
+}
+
+.jog-btn {
+  width: 72px;
+  min-height: 38px;
+  font-weight: 800;
+}
+.jog-stop {
+  width: 72px;
+  min-height: 38px;
+  font-weight: 900;
+}
+
+/* --- Command buttons row (HOME / Clear Alarm / Soft Reset / REHOME) --- */
+.cmd-row {
+  display: grid;
+  grid-template-columns: repeat(4, 120px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Base command button style: DO NOT force background color here
+   (so Quasar "color=orange/green" can work for HOME). */
+.cmd-btn {
+  min-height: 56px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* Blue style for the other command buttons (like the reference) */
+.cmd-btn-blue {
+  background: #8fa9db !important;
+  color: #0b1220 !important;
+  border: 1px solid #5d6b86 !important;
+}
 """)
 
 def start_nfs():
@@ -206,38 +268,134 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     greyable_buttons = []
 
+    def add_jog_row(axis: str, left_label: str, right_label: str, unit: str,
+                    left_moves: list[tuple[int, callable]], right_moves: list[tuple[int, callable]]):
+        """Create a row like: [AXIS+UNIT] [120][60][10][1] [STOP] [1][10][60][120]. STOP is placeholder."""
+        with ui.column().classes('w-full'):
+            with ui.element('div').classes('jog-grid'):
+                ui.label('')  # spacer (aligns with axis+unit cell below)
+                ui.label(left_label).classes('jog-hdr jog-hdr-left')
+                ui.label('STOP').classes('jog-hdr jog-hdr-stop')
+                ui.label(right_label).classes('jog-hdr jog-hdr-right')
+
+            with ui.element('div').classes('jog-grid'):
+                ui.html(f'<div class="jog-axis">{axis}:<div class="jog-unit">{unit}</div></div>')
+
+                # left side (big -> small); buttons show only numbers now
+                for value, func in left_moves:
+                    b = ui.button(
+                        f'{value}',
+                        on_click=log_button_click(f'{axis} {left_label} {value}{unit}', lambda v=value, f=func: safe_move(f, v)),
+                    ).classes('jog-btn')
+                    greyable_buttons.append(b)
+
+                # STOP placeholder (not implemented yet)
+                ui.button('STOP', color='red', on_click=None).classes('jog-stop').disable()
+
+                # right side (small -> big); buttons show only numbers now
+                for value, func in right_moves:
+                    b = ui.button(
+                        f'{value}',
+                        on_click=log_button_click(f'{axis} {right_label} {value}{unit}', lambda v=value, f=func: safe_move(f, v)),
+                    ).classes('jog-btn')
+                    greyable_buttons.append(b)
+
     # Plot axis limits
     AXIS_LIMIT = 400
+
+    def _scanner_has_alarm() -> bool:
+        """Alarm is active when GrblMachineState == ALARM."""
+        try:
+            st = scanner.get_state()
+            if st is None:
+                return False
+            name = getattr(st, 'name', str(st))
+            return str(name).upper() == 'ALARM'
+        except Exception:
+            return False
+
+    def _is_home_successful(tol_mm: float = 0.5, tol_deg: float = 0.5) -> bool:
+        """Heuristic: homing is considered successful when not in ALARM and position is ~0,0,0."""
+        if _scanner_has_alarm():
+            return False
+        try:
+            pos = scanner.get_position()
+            if pos is None:
+                return False
+            return (abs(pos.r()) <= tol_mm) and (abs(pos.z()) <= tol_mm) and (abs(pos.t()) <= tol_deg)
+        except Exception:
+            return False
+
+    def _set_home_button_color(color: str) -> None:
+        """Update HOME button color (NiceGUI Quasar color names: 'orange', 'green', etc.)."""
+        try:
+            home_button.props(f'color={color}')
+        except Exception:
+            pass
 
     # Whole app layout: left = controls + dials + plot, right = log (user-resizable)
     with ui.splitter(value=50).classes('w-full h-screen items-stretch') as splitter:
         with splitter.before:
             with ui.column().classes('w-full h-full min-w-0 overflow-auto'):
-                with ui.button_group():
-                    greyable_buttons.append(ui.button(' 1 degree  CCW', on_click=log_button_click('1 degree CCW', lambda: safe_move(scanner.rotate_ccw, 1))))
-                    greyable_buttons.append(ui.button('10 degrees CCW', on_click=log_button_click('10 degrees CCW', lambda: safe_move(scanner.rotate_ccw, 10))))
-                    greyable_buttons.append(ui.button(' 1 degree  CW', on_click=log_button_click('1 degree CW', lambda: safe_move(scanner.rotate_cw, 1))))
-                    greyable_buttons.append(ui.button('10 degrees CW', on_click=log_button_click('10 degrees CW', lambda: safe_move(scanner.rotate_cw, 10))))
 
-                with ui.button_group():
-                    greyable_buttons.append(ui.button('In  1mm', on_click=log_button_click('In 1mm', lambda: safe_move(scanner.move_in, 1))))
-                    greyable_buttons.append(ui.button('In 10mm', on_click=log_button_click('In 10mm', lambda: safe_move(scanner.move_in, 10))))
-                    greyable_buttons.append(ui.button('Out  1mm', on_click=log_button_click('Out 1mm', lambda: safe_move(scanner.move_out, 1))))
-                    greyable_buttons.append(ui.button('Out 10mm', on_click=log_button_click('Out 10mm', lambda: safe_move(scanner.move_out, 10))))
+                # --- Jog rows (match the reference image layout) ---
+                add_jog_row(
+                    axis='PHI',
+                    left_label='CW',
+                    right_label='CCW',
+                    unit='Deg',
+                    left_moves=[(120, scanner.rotate_cw), (60, scanner.rotate_cw), (10, scanner.rotate_cw), (1, scanner.rotate_cw)],
+                    right_moves=[(1, scanner.rotate_ccw), (10, scanner.rotate_ccw), (60, scanner.rotate_ccw), (120, scanner.rotate_ccw)],
+                )
 
-                with ui.button_group():
-                    greyable_buttons.append(ui.button('Up  1mm', on_click=log_button_click('Up 1mm', lambda: safe_move(scanner.move_up, 1))))
-                    greyable_buttons.append(ui.button('Up 10mm', on_click=log_button_click('Up 10mm', lambda: safe_move(scanner.move_up, 10))))
-                    greyable_buttons.append(ui.button('Down  1mm', on_click=log_button_click('Down 1mm', lambda: safe_move(scanner.move_down, 1))))
-                    greyable_buttons.append(ui.button('Down 10mm', on_click=log_button_click('Down 10mm', lambda: safe_move(scanner.move_down, 10))))
+                add_jog_row(
+                    axis='R',
+                    left_label='IN',
+                    right_label='OUT',
+                    unit='mm',
+                    left_moves=[(120, scanner.move_in), (60, scanner.move_in), (10, scanner.move_in), (1, scanner.move_in)],
+                    right_moves=[(1, scanner.move_out), (10, scanner.move_out), (60, scanner.move_out), (120, scanner.move_out)],
+                )
 
-                with ui.button_group():
-                    ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
-                    ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
-                    ui.button('Home', on_click=log_button_click('Home', lambda: safe_move(scanner.home)))
-                    ui.button('Clear Alarm', on_click=log_button_click('Clear Alarm', lambda: run.io_bound(scanner.clear_alarm)))
-                    ui.button('Soft Reset', on_click=log_button_click('Soft Reset', lambda: run.io_bound(scanner.softreset)))
-                    ui.button('ReHome', on_click=log_button_click('ReHome', lambda: safe_move(rehome)))
+                add_jog_row(
+                    axis='Z',
+                    left_label='DOWN',
+                    right_label='UP',
+                    unit='mm',
+                    left_moves=[(120, scanner.move_down), (60, scanner.move_down), (10, scanner.move_down), (1, scanner.move_down)],
+                    right_moves=[(1, scanner.move_up), (10, scanner.move_up), (60, scanner.move_up), (120, scanner.move_up)],
+                )
+
+                home_state = {'ok': False}  # startup: NOT homed => HOME stays orange until successful homing
+
+                async def home_and_update():
+                    # Run homing, then only mark OK (and make green) if it actually succeeded.
+                    await safe_move(scanner.home)
+                    home_state['ok'] = _is_home_successful()
+                    _set_home_button_color('green' if home_state['ok'] else 'orange')
+
+                # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
+                with ui.element('div').classes('cmd-row w-full justify-start mt-2'):
+                    home_button = ui.button(
+                        'HOME',
+                        color='orange',  # startup: orange
+                        on_click=log_button_click('Home', home_and_update),
+                    ).classes('cmd-btn')
+
+                    ui.button(
+                        'Clear\nAlarm',
+                        on_click=log_button_click('Clear Alarm', lambda: run.io_bound(scanner.clear_alarm)),
+                    ).classes('cmd-btn cmd-btn-blue')
+
+                    ui.button(
+                        'Soft\nReset',
+                        on_click=log_button_click('Soft Reset', lambda: run.io_bound(scanner.softreset)),
+                    ).classes('cmd-btn cmd-btn-blue')
+
+                    ui.button(
+                        'REHOME',
+                        on_click=log_button_click('ReHome', lambda: safe_move(rehome)),
+                    ).classes('cmd-btn cmd-btn-blue')
 
                 with ui.button_group():
                     height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')
@@ -265,57 +423,14 @@ if __name__ in {"__main__", "__mp_main__"}:
                     greyable_buttons.append(ui.button('Start measurements', on_click=log_button_click('Start measurements', async_task)))
                     greyable_buttons.append(ui.button('Take single measurement', on_click=log_button_click('Take single measurement', async_single_measurement_task)))
 
-                with ui.row().classes('w-full justify-start items-center gap-12'):
-                    # --- ROTATION GAUGE ---
-                    with ui.column().classes('items-center'):
-                        ui.label('Rotation (deg)').classes('font-bold')
-                        gauge_rot = ui.highchart({
-                            'chart': {'type': 'gauge', 'height': 200, 'width': 200, 'backgroundColor': 'transparent'},
-                            'title': None,
-                            'pane': {'startAngle': -150, 'endAngle': 150, 'background': {'backgroundColor': '#f5f5f5', 'innerRadius': '60%', 'outerRadius': '100%', 'shape': 'arc'}},
-                            'yAxis': {
-                                'min': -360, 'max': 360,
-                                'minorTickInterval': 'auto', 'tickPixelInterval': 30,
-                                'plotBands': [
-                                    {'from': -360, 'to': -300, 'color': '#ff4d4d'},  # Danger zone
-                                    {'from': 300, 'to': 360, 'color': '#ff4d4d'}
-                                ],
-                                'title': {'text': '°'}
-                            },
-                            'series': [{'name': 'Rotation', 'data': [0], 'tooltip': {'valueSuffix': ' deg'}}]
-                        }, extras=['highcharts-more'])
+                # --- Start/Stop NFS moved to the bottom of the button stack ---
+                with ui.button_group().classes('mt-2'):
+                    ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
+                    ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
 
-                    # --- IN/OUT INDICATOR (Horizontal Linear) ---
-                    with ui.column().classes('items-center'):
-                        ui.label('In/Out (mm)').classes('font-bold')
-                        gauge_inout = ui.highchart({
-                            'chart': {'type': 'bar', 'height': 120, 'width': 300, 'backgroundColor': 'transparent'},
-                            'title': None,
-                            'xAxis': {'categories': ['In/Out'], 'visible': False},
-                            'yAxis': {
-                                'min': -800, 'max': 800,
-                                'title': {'text': 'Distance (mm)'},
-                                'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
-                            },
-                            'legend': {'enabled': False},
-                            'series': [{'name': 'Position', 'data': [0], 'color': '#2196f3'}]
-                        })
-
-                    # --- UP/DOWN INDICATOR (Vertical Linear) ---
-                    with ui.column().classes('items-center'):
-                        ui.label('Up/Down (mm)').classes('font-bold')
-                        gauge_updown = ui.highchart({
-                            'chart': {'type': 'column', 'height': 300, 'width': 120, 'backgroundColor': 'transparent'},
-                            'title': None,
-                            'xAxis': {'categories': ['Up/Down'], 'visible': False},
-                            'yAxis': {
-                                'min': -800, 'max': 800,
-                                'title': {'text': 'Height (mm)'},
-                                'plotBands': [{'from': -800, 'to': 800, 'color': '#eeeeee'}]
-                            },
-                            'legend': {'enabled': False},
-                            'series': [{'name': 'Position', 'data': [0], 'color': '#9c27b0'}]
-                        })
+                # REMOVED: dials/sliders (the 3 gauges block) per request
+                # with ui.row().classes('w-full justify-start items-center gap-12'):
+                #     ... gauge_rot / gauge_inout / gauge_updown ...
 
                 with ui.row().classes('w-full justify-start items-center gap-8'):
                     alarm_badge = ui.badge('ALARM').props('color=red outline')
@@ -370,27 +485,15 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             return None
 
-    def _scanner_has_alarm() -> bool:
-        """Alarm is active when GrblMachineState == ALARM."""
-        try:
-            st = scanner.get_state()
-            if st is None:
-                return False
-            name = getattr(st, 'name', str(st))
-            return str(name).upper() == 'ALARM'
-        except Exception:
-            return False
-
     def update_scanner_position():
         pos = scanner.get_position()
         if pos is not None:
             position_label.set_text(f'Position: {pos}')
 
-            # We call the chart's update method directly.
-            # This performs a "soft" update of the data points.
-            gauge_rot.run_method('update', {'series': [{'data': [pos.t()]}]})
-            gauge_inout.run_method('update', {'series': [{'data': [pos.r()]}]})
-            gauge_updown.run_method('update', {'series': [{'data': [pos.z()]}]})
+            # REMOVED: dials/sliders updates (gauges removed)
+            # gauge_rot.run_method('update', {'series': [{'data': [pos.t()]}]})
+            # gauge_inout.run_method('update', {'series': [{'data': [pos.r()]}]})
+            # gauge_updown.run_method('update', {'series': [{'data': [pos.z()]}]})
         else:
             position_label.set_text('Position: (no position available)')
 
@@ -404,9 +507,18 @@ if __name__ in {"__main__", "__mp_main__"}:
         if _scanner_has_alarm():
             alarm_badge.visible = True
             alarm_badge.classes(add='alarm_blink')
+
+            # During/after alarm: HOME must be orange until a successful home is performed
+            home_state['ok'] = False
+            _set_home_button_color('orange')
         else:
             alarm_badge.visible = False
             alarm_badge.classes(remove='alarm_blink')
+
+            # Keep whatever we last "earned":
+            # - if we've homed successfully since last alarm: green
+            # - otherwise (startup or post-alarm): orange
+            _set_home_button_color('green' if home_state['ok'] else 'orange')
 
     ui.timer(0.5, update_scanner_position)
 

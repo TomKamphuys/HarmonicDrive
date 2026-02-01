@@ -81,10 +81,10 @@ ui.add_css("""
   font-weight: 900;
 }
 
-/* --- Command buttons row (HOME / Clear Alarm / Soft Reset / REHOME) --- */
+/* --- Command buttons row (HOME / Clear Alarm / Soft Reset / REHOME / HOLD) --- */
 .cmd-row {
   display: grid;
-  grid-template-columns: repeat(4, 120px);
+  grid-template-columns: repeat(5, 120px);
   gap: 18px;
   align-items: stretch;
 }
@@ -115,6 +115,13 @@ def stop_nfs():
         nfs.shutdown()
     except Exception as e:
         print(f"Error during shutdown: {e}")
+
+def hold_scanner():
+    """Stop motion only (do NOT stop NFS)."""
+    try:
+        scanner.hold()
+    except Exception as e:
+        print(f"Error during HOLD: {e}")
 
 def DEMO_move_to_stool():
     scanner.planar_move_to(-500.0, -500.0)
@@ -270,7 +277,7 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     def add_jog_row(axis: str, left_label: str, right_label: str, unit: str,
                     left_moves: list[tuple[int, callable]], right_moves: list[tuple[int, callable]]):
-        """Create a row like: [AXIS+UNIT] [120][60][10][1] [STOP] [1][10][60][120]. STOP is placeholder."""
+        """Create a row like: [AXIS+UNIT] [120][60][10][1] [STOP] [1][10][60][120]. STOP triggers HOLD."""
         with ui.column().classes('w-full'):
             with ui.element('div').classes('jog-grid'):
                 ui.label('')  # spacer (aligns with axis+unit cell below)
@@ -289,8 +296,12 @@ if __name__ in {"__main__", "__mp_main__"}:
                     ).classes('jog-btn')
                     greyable_buttons.append(b)
 
-                # STOP placeholder (not implemented yet)
-                ui.button('STOP', color='red', on_click=None).classes('jog-stop').disable()
+                # STOP button: HOLD only (do NOT disable; should work even during measurements)
+                ui.button(
+                    'STOP',
+                    color='red',
+                    on_click=log_button_click(f'{axis} STOP (HOLD)', lambda: run.io_bound(hold_scanner)),
+                ).classes('jog-stop')
 
                 # right side (small -> big); buttons show only numbers now
                 for value, func in right_moves:
@@ -314,17 +325,12 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             return False
 
-    def _is_home_successful(tol_mm: float = 0.5, tol_deg: float = 0.5) -> bool:
-        """Heuristic: homing is considered successful when not in ALARM and position is ~0,0,0."""
-        if _scanner_has_alarm():
-            return False
-        try:
-            pos = scanner.get_position()
-            if pos is None:
-                return False
-            return (abs(pos.r()) <= tol_mm) and (abs(pos.z()) <= tol_mm) and (abs(pos.t()) <= tol_deg)
-        except Exception:
-            return False
+    def _is_home_successful() -> bool:
+        """Homing is considered successful if we're not in ALARM.
+
+        (Do NOT require position == 0; some controllers don't report exact zeros immediately.)
+        """
+        return not _scanner_has_alarm()
 
     def _set_home_button_color(color: str) -> None:
         """Update HOME button color (NiceGUI Quasar color names: 'orange', 'green', etc.)."""
@@ -368,10 +374,25 @@ if __name__ in {"__main__", "__mp_main__"}:
 
                 home_state = {'ok': False}  # startup: NOT homed => HOME stays orange until successful homing
 
+                async def _wait_for_home_settle(timeout_s: float = 5.0) -> bool:
+                    """Wait a short time after homing for the controller to settle; succeed if not in ALARM."""
+                    deadline = time.time() + timeout_s
+                    while time.time() < deadline:
+                        if _scanner_has_alarm():
+                            return False
+                        # Optional: if position is available, we're likely settled enough
+                        try:
+                            if scanner.get_position() is not None:
+                                return True
+                        except Exception:
+                            pass
+                        await asyncio.sleep(0.1)
+                    return not _scanner_has_alarm()
+
                 async def home_and_update():
-                    # Run homing, then only mark OK (and make green) if it actually succeeded.
+                    # Run homing, then mark OK if we are not in ALARM after a brief settle period.
                     await safe_move(scanner.home)
-                    home_state['ok'] = _is_home_successful()
+                    home_state['ok'] = await _wait_for_home_settle()
                     _set_home_button_color('green' if home_state['ok'] else 'orange')
 
                 # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
@@ -396,6 +417,12 @@ if __name__ in {"__main__", "__mp_main__"}:
                         'REHOME',
                         on_click=log_button_click('ReHome', lambda: safe_move(rehome)),
                     ).classes('cmd-btn cmd-btn-blue')
+
+                    ui.button(
+                        'HOLD',
+                        color='red',
+                        on_click=log_button_click('Hold', lambda: run.io_bound(scanner.hold)),
+                    ).classes('cmd-btn')
 
                 with ui.button_group():
                     height_input = ui.number(label='Height Offset (mm)', value=0, format='%.2f')

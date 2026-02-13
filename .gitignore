@@ -67,3 +67,5 @@ measurement_positions.txt
 # =========================
 Recordings/*
 !Recordings/.gitkeep
+RawRecordings/*
+!RawRecordings/.gitkeep

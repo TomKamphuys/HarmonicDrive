@@ -2,6 +2,8 @@ AI generated:
 
 # HarmonicDrive
 
+![HarmonicDrive Logo](HarmonicDrive.png)
+
 A near-field acoustic scanner controller with a real-time web-based UI, designed for automated loudspeaker measurement on cylindrical and spherical grids.
 
 ## Overview

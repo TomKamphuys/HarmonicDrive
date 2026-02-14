@@ -1,0 +1,27 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#f8f9fa" stroke="#2c3e50" stroke-width="2"/>
+  
+  <!-- Outer harmonic waves -->
+  <path d="M 50 100 Q 60 85, 70 100 T 90 100" stroke="#3498db" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M 110 100 Q 120 85, 130 100 T 150 100" stroke="#3498db" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Middle harmonic waves (offset phase) -->
+  <path d="M 50 100 Q 60 115, 70 100 T 90 100" stroke="#e74c3c" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 110 100 Q 120 115, 130 100 T 150 100" stroke="#e74c3c" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Central microphone/sensor symbol -->
+  <circle cx="100" cy="100" r="12" fill="#2c3e50" stroke="#2c3e50" stroke-width="1"/>
+  <circle cx="100" cy="100" r="20" fill="none" stroke="#2c3e50" stroke-width="2"/>
+  
+  <!-- Crosshairs (spherical/cylindrical grid reference) -->
+  <line x1="70" y1="100" x2="130" y2="100" stroke="#27ae60" stroke-width="1.5" opacity="0.6"/>
+  <line x1="100" y1="70" x2="100" y2="130" stroke="#27ae60" stroke-width="1.5" opacity="0.6"/>
+  
+  <!-- CNC rotation symbol (small arc indicators) -->
+  <path d="M 155 60 A 25 25 0 0 1 155 140" stroke="#f39c12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <polygon points="155,140 150,130 160,135" fill="#f39c12"/>
+  
+  <!-- Text label -->
+  <text x="100" y="165" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#2c3e50">HarmonicDrive</text>
+</svg>

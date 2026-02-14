@@ -58,8 +58,10 @@ All settings live in **`config.ini`** (INI format). Key sections:
 | `[motion_manager]` | Coordinate system (cylindrical / spherical), safe radius |
 | `[measurement_points]` | Grid type, point count, spacing, or CSV file |
 Set `type = Mock` under `[grbl_streamer]` and `mock = True` under `[audio]` for offline development without hardware.
+
 ## Project Structure
 
+```
 HarmonicDrive/
 ├── main.py                 # Entry point — NiceGUI web UI and scanner orchestration
 ├── config.ini              # Active configuration
@@ -68,6 +70,7 @@ HarmonicDrive/
 ├── Recordings/             # Processed measurement WAV files
 ├── RawRecordings/          # Raw (unprocessed) measurement WAV files
 └── TODO.md                 # Development notes
+```
 
 ## UI Features
 - **Jog controls** — PHI (rotation), R (radial), Z (vertical) with 1 / 10 / 60 / 120 step sizes

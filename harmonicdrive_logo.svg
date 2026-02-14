@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e40af;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="200" height="200" fill="#f8fafc"/>
+  
+  <!-- Concentric circles for spherical measurement grid -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="url(#waveGrad)" stroke-width="2" opacity="0.9"/>
+  <circle cx="100" cy="100" r="65" fill="none" stroke="url(#waveGrad)" stroke-width="2" opacity="0.75"/>
+  <circle cx="100" cy="100" r="45" fill="none" stroke="url(#waveGrad)" stroke-width="2" opacity="0.6"/>
+  <circle cx="100" cy="100" r="25" fill="url(#waveGrad)" opacity="0.8"/>
+  
+  <!-- Harmonic wave patterns -->
+  <path d="M 30 100 Q 65 70 100 100 T 170 100" fill="none" stroke="#0f172a" stroke-width="1.5" opacity="0.6"/>
+  <path d="M 30 115 Q 65 95 100 115 T 170 115" fill="none" stroke="#0f172a" stroke-width="1.5" opacity="0.5"/>
+  <path d="M 30 85 Q 65 55 100 85 T 170 85" fill="none" stroke="#0f172a" stroke-width="1.5" opacity="0.5"/>
+  
+  <!-- Center microphone indicator -->
+  <circle cx="100" cy="100" r="6" fill="#0f172a"/>
+  
+  <!-- Text -->
+  <text x="100" y="175" font-size="14" font-weight="bold" text-anchor="middle" fill="#1e40af" font-family="Arial, sans-serif">HarmonicDrive</text>
+</svg>

@@ -4,3 +4,6 @@ main.py:
 27/02/26
 Logging Error in def audio_worker() - When the FileMeasurmentPoints returns 'no more points' this was treated as an exception and logged as an error.
 Updated to catch StopIteration and treat it as a success message.
+
+01/03/26
+Created utility script "wav_info_reader.py"  which scans and display wav RIFF INFO metadata for all files in the recordings and debug folders.

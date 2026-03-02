@@ -1,5 +1,32 @@
 #!/usr/bin/env python3
 
+"""
+List Sound Devices Utility
+====================
+This script lists all available audio hardware using the 
+python-sounddevice library. It handles ASIO environment setup and 
+automatically adjusts channel indexing based on the Host API.
+
+Can run standalone at CLI for an on-screen report or as a function
+reurning a dictionary with the following structure:
+
+The get_devices_and_channels() function returns a dictionary where:
+    - Key:   (int) The PortAudio Device ID.
+    - Value: (dict) A sub-dictionary containing:
+        {
+            'name': (str) The cleaned device name,
+            'hostapi': (str) The name of the host API (e.g., ASIO, WASAPI),
+            'input_channels': (list) A list of valid input channel indices,
+            'output_channels': (list) A list of valid output channel indices
+        }
+
+Indexing Logic:
+---------------
+- ASIO: Returns 0-based indices (e.g., [0, 1, 2...]) for hardware direct access.
+- Non-ASIO (WASAPI/MME/etc.): Returns 1-based indices (e.g., [1, 2, 3...]) 
+  to match standard mapping conventions.
+"""
+
 import os
 
 # Enable ASIO build of PortAudio in python-sounddevice (Windows).

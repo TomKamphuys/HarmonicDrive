@@ -7,3 +7,10 @@ Updated to catch StopIteration and treat it as a success message.
 
 01/03/26
 Created utility script "wav_info_reader.py"  which scans and display wav RIFF INFO metadata for all files in the recordings and debug folders.
+
+list_sound_device.py
+-------------------------
+
+02/03/26
+Created utility script to list all sound device IDs and channel indices with ASIO environment enabled. Can be run standalone at CLI for an on screen report
+or called as a function returning a dictionary with relevant info (see code comment).

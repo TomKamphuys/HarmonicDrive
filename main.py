@@ -1,8 +1,11 @@
-from nicegui import app, ui, run  # Add 'app' to your imports
+from nicegui import app, ui, run
 import argparse
 import numpy as np
 import asyncio
 import time
+import threading
+import queue
+import ctypes
 from pathlib import Path
 
 from loguru import logger
@@ -31,7 +34,53 @@ def log_button_click(label: str, handler):
         return result
     return _wrapped
 
-# Flashing animation for ALARM indicator
+# --- Dedicated Audio Worker Thread (ASIO Fix) ---
+# This worker ensures all ASIO calls happen on one consistent thread with COM initialized.
+audio_queue = queue.Queue()
+
+def audio_worker():
+    """A dedicated thread with COM initialization for picky ASIO drivers."""
+    try:
+        # Initialize COM for this thread (COINIT_APARTMENTTHREADED = 2)
+        ctypes.windll.ole32.CoInitializeEx(None, 2)
+        logger.info("Audio worker thread COM initialized.")
+    except Exception as e:
+        logger.warning(f"COM initialization failed: {e}")
+
+    while True:
+        item = audio_queue.get()
+        if item is None: 
+            break 
+        
+        # Unpack the 4 items, including the specific asyncio loop
+        func, args, done_event, loop = item
+        try:
+            func(*args)
+        except StopIteration:
+            # Handle the "No more points" signal from FileMeasurementPoints.next()
+            logger.info("Measurement sequence completed: All points processed successfully.")
+        except Exception as e:
+            # Catch cases where it might be raised as a standard Exception instead of StopIteration
+            if "No more points" in str(e):
+                logger.info("Measurement sequence completed: All points processed successfully.")
+            else:
+                logger.error(f"Audio worker failed: {e}")
+        finally:
+            # This ensures the UI buttons re-enable even if an error occurs
+            loop.call_soon_threadsafe(done_event.set)
+            audio_queue.task_done()
+    
+    try:
+        ctypes.windll.ole32.CoUninitialize()
+    except:
+        pass
+
+# Start the daemon worker thread immediately
+worker_thread = threading.Thread(target=audio_worker, daemon=True)
+worker_thread.start()
+
+
+# --- CSS Styles ---
 ui.add_css("""
 @keyframes alarm_blink {
   0%   { opacity: 1; }
@@ -110,8 +159,9 @@ def start_nfs():
 
 def stop_nfs():
     print('Stopping NFS')
-    # Use a try-except here just in case nfs isn't fully initialized
     try:
+        # Signal audio thread to exit
+        audio_queue.put(None)
         nfs.shutdown()
     except Exception as e:
         print(f"Error during shutdown: {e}")
@@ -137,16 +187,26 @@ def rehome():
     scanner.home()
 
 async def take_measurement():
+    # Not used directly in UI anymore, but kept for reference
     nfs.take_measurement_set()
 
 async def async_task():
+    """Offload measurement set to dedicated audio thread."""
     ui.notify('Measurement started')
     for button in greyable_buttons:
         button.disable()
 
     try:
-        # run.io_bound keeps the UI responsive/connected
-        await run.io_bound(nfs.take_measurement_set)
+        # Capture the actual running loop
+        loop = asyncio.get_running_loop()
+        done = asyncio.Event()
+        # Send the task to the queue: (function, args, event, loop)
+        audio_queue.put((nfs.take_measurement_set, (), done, loop))
+        # Wait for the worker to signal completion
+        await done.wait()
+    except Exception as e:
+        logger.error(f"Measurement task failed: {e}")
+        ui.notify(f"Error: {e}", type='negative')
     finally:
         # Use finally to ensure buttons re-enable even if the task fails
         ui.notify('Measurement finished')
@@ -154,12 +214,21 @@ async def async_task():
             button.enable()
 
 async def async_single_measurement_task():
+    """Offload single measurement to dedicated audio thread."""
     ui.notify('Single measurement started')
     for button in greyable_buttons:
         button.disable()
 
     try:
-        await run.io_bound(nfs.take_single_measurement)
+        # Capture the actual running loop
+        loop = asyncio.get_running_loop()
+        done = asyncio.Event()
+        # Send the task to the queue: (function, args, event, loop)
+        audio_queue.put((nfs.take_single_measurement, (), done, loop))
+        await done.wait()
+    except Exception as e:
+        logger.error(f"Single measurement failed: {e}")
+        ui.notify(f"Error: {e}", type='negative')
     finally:
         ui.notify('Single measurement finished')
         for button in greyable_buttons:
@@ -188,6 +257,7 @@ def load_measurement_data():
     
     try:
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
+        data = np.atleast_2d(data)  # <--- Add this line
         if data.size == 0:
             return None, None
         
@@ -196,7 +266,6 @@ def load_measurement_data():
         z = data[:, 2]
         
         # Calculate elevation angle from cylindrical coordinates
-        # elevation = arctan(z / r)
         elevation = np.degrees(np.arctan2(z, r))
         
         # Azimuth is already theta
@@ -255,10 +324,13 @@ async def watch_file():
                 if current_mtime != last_mtime:
                     last_mtime = current_mtime
                     update_plot()
+            await asyncio.sleep(1)  # Check every second
+        except asyncio.CancelledError:
+            # Gracefully exit when NiceGUI shuts down and cancels this task
+            break
         except Exception as e:
             print(f"Error watching file: {e}")
-
-        await asyncio.sleep(1)  # Check every second
+            await asyncio.sleep(1)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
@@ -326,10 +398,7 @@ if __name__ in {"__main__", "__mp_main__"}:
             return False
 
     def _is_home_successful() -> bool:
-        """Homing is considered successful if we're not in ALARM.
-
-        (Do NOT require position == 0; some controllers don't report exact zeros immediately.)
-        """
+        """Homing is considered successful if we're not in ALARM."""
         return not _scanner_has_alarm()
 
     def _set_home_button_color(color: str) -> None:
@@ -380,7 +449,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                     while time.time() < deadline:
                         if _scanner_has_alarm():
                             return False
-                        # Optional: if position is available, we're likely settled enough
                         try:
                             if scanner.get_position() is not None:
                                 return True
@@ -434,7 +502,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                         ),
                     )
 
-                # FIX: don't nest a button inside another button (that causes overlap)
                 greyable_buttons.append(
                     ui.button(
                         'Zero NFS',
@@ -454,10 +521,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                 with ui.button_group().classes('mt-2'):
                     ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
                     ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
-
-                # REMOVED: dials/sliders (the 3 gauges block) per request
-                # with ui.row().classes('w-full justify-start items-center gap-12'):
-                #     ... gauge_rot / gauge_inout / gauge_updown ...
 
                 with ui.row().classes('w-full justify-start items-center gap-8'):
                     alarm_badge = ui.badge('ALARM').props('color=red outline')
@@ -516,11 +579,6 @@ if __name__ in {"__main__", "__mp_main__"}:
         pos = scanner.get_position()
         if pos is not None:
             position_label.set_text(f'Position: {pos}')
-
-            # REMOVED: dials/sliders updates (gauges removed)
-            # gauge_rot.run_method('update', {'series': [{'data': [pos.t()]}]})
-            # gauge_inout.run_method('update', {'series': [{'data': [pos.r()]}]})
-            # gauge_updown.run_method('update', {'series': [{'data': [pos.z()]}]})
         else:
             position_label.set_text('Position: (no position available)')
 
@@ -541,15 +599,11 @@ if __name__ in {"__main__", "__mp_main__"}:
         else:
             alarm_badge.visible = False
             alarm_badge.classes(remove='alarm_blink')
-
-            # Keep whatever we last "earned":
-            # - if we've homed successfully since last alarm: green
-            # - otherwise (startup or post-alarm): orange
             _set_home_button_color('green' if home_state['ok'] else 'orange')
 
     ui.timer(0.5, update_scanner_position)
 
-    # Start watching the file for changes
-    ui.timer(1.0, update_plot)
+    # Note: Using ui.timer instead of a raw background loop so it shuts down cleanly with NiceGUI
+    ui.timer(1.0, watch_file)
 
     ui.run(reload=False)

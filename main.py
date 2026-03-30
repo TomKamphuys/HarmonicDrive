@@ -10,8 +10,16 @@ from pathlib import Path
 
 from loguru import logger
 
+
 from nfs import NearFieldScannerFactory, ScannerFactory
 from nfs.logging_config import setup_logging
+
+# --- 7-segment look: load digital-ish font ---
+# Orbitron is a popular "tech" font available on Google Fonts.
+# Digital-7 or segment fonts aren't standard, but VT323/Share Tech Mono/Press Start 2P work well.
+ui.add_head_html('<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">')
+
+log_handler = None
 
 # --- Loguru: setup handled by nfs.logging_config ---
 # We keep log_button_click for UI events.
@@ -337,6 +345,19 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     setup_logging(config_file)
 
+    # In-memory log buffer for the UI
+    class LogBuffer:
+        def __init__(self, max_lines=2000):
+            self.buffer = queue.Queue()
+            self.max_lines = max_lines
+
+        def write(self, message):
+            # Loguru sends the message as a string (including newline)
+            self.buffer.put(message.strip())
+
+    log_handler = LogBuffer()
+    logger.add(log_handler.write, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}")
+
     scanner = ScannerFactory.create(config_file)
     nfs = NearFieldScannerFactory.create(scanner, config_file)
 
@@ -521,8 +542,44 @@ if __name__ in {"__main__", "__mp_main__"}:
                     alarm_badge = ui.badge('ALARM').props('color=red outline')
                     alarm_badge.visible = False  # off until alarm happens
 
-                    position_label = ui.label('Position: —')
-                    state_label = ui.label('State: —')
+                    # position_label = ui.label('Position: —') # Replaced with individual axis labels
+                    with ui.row().classes('gap-4 items-center'):
+                        # 7-segment style display: Share Tech Mono font, high contrast
+                        card_classes = 'p-3 items-center bg-black rounded-lg border-2 border-gray-700 w-48'
+                        label_classes = 'text-xs font-bold text-gray-300 uppercase tracking-widest mb-1'
+                        
+                        # Background "inactive" segments effect: use absolute positioning to layer them
+                        bg_value_classes = 'text-4xl font-bold text-[#1a3300] absolute'
+                        value_classes = 'text-4xl font-bold text-[#7eff00] relative'
+                        value_style = "font-family: 'Share Tech Mono', monospace; white-space: pre;"
+                        unit_classes = 'text-xs font-bold text-gray-400 mt-1'
+
+                        with ui.card().classes(card_classes):
+                            ui.label('R (Radius)').classes(label_classes)
+                            with ui.element('div').classes('relative'):
+                                ui.label(' 888.88').classes(bg_value_classes).style(value_style)
+                                pos_r = ui.label(' 000.00').classes(value_classes).style(value_style)
+                            ui.label('mm').classes(unit_classes)
+                        with ui.card().classes(card_classes):
+                            ui.label('T (Theta)').classes(label_classes)
+                            with ui.element('div').classes('relative'):
+                                ui.label(' 888.88').classes(bg_value_classes).style(value_style)
+                                pos_t = ui.label(' 000.00').classes(value_classes).style(value_style)
+                            ui.label('°').classes(unit_classes)
+                        with ui.card().classes(card_classes):
+                            ui.label('Z (Height)').classes(label_classes)
+                            with ui.element('div').classes('relative'):
+                                ui.label(' 888.88').classes(bg_value_classes).style(value_style)
+                                pos_z = ui.label(' 000.00').classes(value_classes).style(value_style)
+                            ui.label('mm').classes(unit_classes)
+
+                        with ui.card().classes(card_classes):
+                            ui.label('Status').classes(label_classes)
+                            with ui.element('div').classes('relative'):
+                                ui.label('XXXXXXXX').classes(bg_value_classes).style(value_style)
+                                pos_state = ui.label('   —   ').classes(value_classes).style(value_style)
+                            ui.label('Mode').classes(unit_classes)
+
 
                 plot = ui.matplotlib(figsize=(8, 6))
                 with plot.figure as fig:
@@ -534,31 +591,15 @@ if __name__ in {"__main__", "__mp_main__"}:
                 log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto')
                 log_view.set_visibility(True)
 
-                log_file = Path('scanner.log')
-                _log_tail_state = {'pos': 0}
-
                 def tail_scanner_log():
+                    if log_handler is None:
+                        return
                     try:
-                        if not log_file.exists():
-                            return
-
-                        size = log_file.stat().st_size
-                        if size < _log_tail_state['pos']:
-                            # log rotated/truncated
-                            _log_tail_state['pos'] = 0
-
-                        with log_file.open('r', encoding='utf-8', errors='replace') as f:
-                            f.seek(_log_tail_state['pos'])
-                            chunk = f.read()
-                            _log_tail_state['pos'] = f.tell()
-
-                        if not chunk:
-                            return
-
-                        for line in chunk.splitlines():
+                        while not log_handler.buffer.empty():
+                            line = log_handler.buffer.get_nowait()
                             log_view.push(line)
                     except Exception as e:
-                        log_view.push(f'[tail error] {e}')
+                        log_view.push(f'[buffer error] {e}')
 
                 ui.timer(0.5, tail_scanner_log)
 
@@ -566,22 +607,31 @@ if __name__ in {"__main__", "__mp_main__"}:
         """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
         try:
             st = scanner.get_state()
-            return None if st is None else str(st)
+            if st is None:
+                return None
+            # Return only the enum name (e.g., 'IDLE' instead of 'GrblStateMachine.IDLE')
+            if hasattr(st, 'name'):
+                return st.name
+            return str(st).split('.')[-1]
         except Exception:
             return None
 
     def update_scanner_position():
         pos = scanner.get_position()
         if pos is not None:
-            position_label.set_text(f'Position: {pos}')
+            pos_r.set_text(f'{pos.r():7.2f}')
+            pos_t.set_text(f'{pos.t():7.2f}')
+            pos_z.set_text(f'{pos.z():7.2f}')
         else:
-            position_label.set_text('Position: (no position available)')
+            pos_r.set_text('   —   ')
+            pos_t.set_text('   —   ')
+            pos_z.set_text('   —   ')
 
         raw_state = _get_raw_state_string()
         if raw_state is not None:
-            state_label.set_text(f'State: {raw_state}')
+            pos_state.set_text(f'{raw_state:^8}')
         else:
-            state_label.set_text('State: (unavailable)')
+            pos_state.set_text('   —   ')
 
         # Alarm indicator: flash red in ALARM, turn off otherwise
         if _scanner_has_alarm():

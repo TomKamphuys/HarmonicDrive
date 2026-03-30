@@ -11,18 +11,10 @@ from pathlib import Path
 from loguru import logger
 
 from nfs import NearFieldScannerFactory, ScannerFactory
+from nfs.logging_config import setup_logging
 
-# --- Loguru: write UI click logs to the same scanner.log file (append) ---
-logger.remove()  # avoid duplicate console handlers if any
-logger.add(
-    "scanner.log",
-    level="INFO",
-    encoding="utf-8",
-    enqueue=True,           # thread/process-safe-ish; good with UI + io_bound
-    backtrace=False,
-    diagnose=False,
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}",
-)
+# --- Loguru: setup handled by nfs.logging_config ---
+# We keep log_button_click for UI events.
 
 def log_button_click(label: str, handler):
     """Wrap a NiceGUI on_click handler to log the click and then run it (sync or async)."""
@@ -250,8 +242,8 @@ async def zero_nfs_then_apply_height_offset(height_value: float):
     await run.io_bound(scanner.set_speaker_center_above_stool, height_value)
 
 def load_measurement_data():
-    """Load cylindrical coordinates from measurement_positions.txt and convert to azimuth/elevation"""
-    file_path = Path('measurement_positions.txt')
+    """Load cylindrical coordinates from measurement_positions.csv and convert to azimuth/elevation"""
+    file_path = Path('measurement_positions.csv')
     if not file_path.exists():
         return None, None
     
@@ -313,8 +305,8 @@ def update_plot():
 
 
 async def watch_file():
-    """Watch for changes in measurement_positions.txt"""
-    file_path = Path('measurement_positions.txt')
+    """Watch for changes in measurement_positions.csv"""
+    file_path = Path('measurement_positions.csv')
     last_mtime = 0
 
     while True:
@@ -342,13 +334,16 @@ if __name__ in {"__main__", "__mp_main__"}:
     )
     args = parser.parse_args()
     config_file = args.config
+
+    setup_logging(config_file)
+
     scanner = ScannerFactory.create(config_file)
     nfs = NearFieldScannerFactory.create(scanner, config_file)
 
     greyable_buttons = []
 
     def add_jog_row(axis: str, left_label: str, right_label: str, unit: str,
-                    left_moves: list[tuple[int, callable]], right_moves: list[tuple[int, callable]]):
+                    left_moves: list, right_moves: list):
         """Create a row like: [AXIS+UNIT] [120][60][10][1] [STOP] [1][10][60][120]. STOP triggers HOLD."""
         with ui.column().classes('w-full'):
             with ui.element('div').classes('jog-grid'):

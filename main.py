@@ -6,6 +6,7 @@ import time
 import threading
 import queue
 import ctypes
+import soundfile as sf
 from pathlib import Path
 
 from loguru import logger
@@ -282,6 +283,7 @@ def update_plot():
     azimuth, elevation = load_measurement_data()
     
     fig.clear()
+    fig.set_layout_engine('constrained')
     ax = fig.add_subplot(111)
     
     if azimuth is not None and elevation is not None:
@@ -312,7 +314,76 @@ def update_plot():
     plot.update()
 
 
-async def watch_file():
+def update_ir_fr_plots(ir_plot_container):
+    """
+    Finds the latest *_ir.wav in ./Recordings, loads it,
+    calculates the Frequency Response, and updates the IR and FR plots.
+    - Zoom: 15ms
+    - Peak at 1/4 of the axis.
+    """
+    rec_dir = Path('./Recordings')
+    if not rec_dir.exists():
+        return
+
+    # Find the latest linear IR file
+    wav_files = list(rec_dir.glob('*_ir.wav'))
+    if not wav_files:
+        return
+
+    latest_file = max(wav_files, key=lambda f: f.stat().st_mtime)
+    
+    try:
+        ir, fs = sf.read(str(latest_file))
+        if len(ir.shape) > 1:
+            ir = ir[:, 0] # mono only
+    except Exception as e:
+        logger.error(f"Error loading IR: {e}")
+        return
+
+    # Find peak and define zoom window (15ms, peak at 1/4)
+    zoom_ms = 15.0
+    zoom_samples = int((zoom_ms / 1000.0) * fs)
+    peak_idx = np.argmax(np.abs(ir))
+    
+    start_idx = max(0, peak_idx - int(zoom_samples / 4))
+    end_idx = start_idx + zoom_samples
+    
+    ir_zoom = ir[start_idx:end_idx]
+    time_axis = (np.arange(len(ir_zoom)) / fs) * 1000.0 # ms
+
+    # Calculate Frequency Response (FR)
+    n_fft = 2**int(np.ceil(np.log2(len(ir))))
+    fr = np.fft.rfft(ir, n=n_fft)
+    freqs = np.fft.rfftfreq(n_fft, d=1/fs)
+    mag_db = 20 * np.log10(np.abs(fr) + 1e-12)
+
+    with ir_plot_container:
+        fig_ir_fr = ir_plot_container.figure
+        fig_ir_fr.clear()
+        fig_ir_fr.set_layout_engine('constrained')
+        
+        # IR Plot
+        ax1 = fig_ir_fr.add_subplot(2, 1, 1)
+        ax1.plot(time_axis, ir_zoom)
+        ax1.set_title(f'Impulse Response (Zoomed): {latest_file.name}')
+        ax1.set_xlabel('Time (ms)')
+        ax1.set_ylabel('Amplitude')
+        ax1.grid(True, alpha=0.3)
+
+        # FR Plot
+        ax2 = fig_ir_fr.add_subplot(2, 1, 2)
+        ax2.semilogx(freqs, mag_db)
+        ax2.set_title('Frequency Response')
+        ax2.set_xlabel('Frequency (Hz)')
+        ax2.set_ylabel('Magnitude (dB)')
+        ax2.set_xlim(20, 20000)
+        ax2.set_ylim(-60, 10)
+        ax2.grid(True, which='both', alpha=0.3)
+
+        ir_plot_container.update()
+
+
+async def watch_file(main_plot, ir_plot):
     """Watch for changes in measurement_positions.csv"""
     file_path = Path('measurement_positions.csv')
     last_mtime = 0
@@ -324,6 +395,7 @@ async def watch_file():
                 if current_mtime != last_mtime:
                     last_mtime = current_mtime
                     update_plot()
+                    update_ir_fr_plots(ir_plot)
             await asyncio.sleep(1)  # Check every second
         except asyncio.CancelledError:
             # Gracefully exit when NiceGUI shuts down and cancels this task
@@ -424,10 +496,18 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             pass
 
-    # Whole app layout: left = controls + dials + plot, right = log (user-resizable)
+    # Whole app layout: left = controls + dials + plot, right = IR/FR plots
+    # Logging is now in a separate toggleable dialog
+    log_dialog = ui.dialog().props('full-width')
+    with log_dialog, ui.card().classes('w-full flex flex-col').style('height: 80vh; resize: both; overflow: auto; min-height: 400px;'):
+        with ui.row().classes('w-full justify-between items-center'):
+            ui.label('System Log').classes('text-xl font-bold')
+            ui.button(icon='close', on_click=log_dialog.close).props('flat')
+        log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto border rounded p-2').style('white-space: pre')
+    
     with ui.splitter(value=50).classes('w-full h-screen items-stretch') as splitter:
         with splitter.before:
-            with ui.column().classes('w-full h-full min-w-0 overflow-auto'):
+            with ui.column().classes('w-full h-full min-w-0 overflow-auto px-2 py-2'):
 
                 # --- Jog rows (match the reference image layout) ---
                 add_jog_row(
@@ -480,7 +560,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                     _set_home_button_color('green' if home_state['ok'] else 'orange')
 
                 # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
-                with ui.element('div').classes('cmd-row w-full justify-start mt-2'):
+                with ui.element('div').classes('cmd-row w-full justify-start mt-1'):
                     home_button = ui.button(
                         'HOME',
                         color='orange',  # startup: orange
@@ -534,15 +614,16 @@ if __name__ in {"__main__", "__mp_main__"}:
                     greyable_buttons.append(ui.button('Take single measurement', on_click=log_button_click('Take single measurement', async_single_measurement_task)))
 
                 # --- Start/Stop NFS moved to the bottom of the button stack ---
-                with ui.button_group().classes('mt-2'):
+                with ui.button_group().classes('mt-1'):
                     ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
                     ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
+                    ui.button('Show Logs', icon='list', on_click=log_dialog.open).classes('ml-2')
 
-                with ui.row().classes('w-full justify-start items-center gap-8'):
+                with ui.row().classes('w-full justify-start items-center gap-4'):
                     # position_label = ui.label('Position: —') # Replaced with individual axis labels
                     with ui.row().classes('gap-4 items-center'):
                         # 7-segment style display: Share Tech Mono font, high contrast
-                        card_classes = 'p-3 items-center bg-black rounded-lg border-2 border-gray-700 w-48'
+                        card_classes = 'p-2 items-center bg-black rounded-lg border-2 border-gray-700 w-48'
                         label_classes = 'text-xs font-bold text-gray-300 uppercase tracking-widest mb-1'
                         
                         # Background "inactive" segments effect: use absolute positioning to layer them
@@ -578,15 +659,19 @@ if __name__ in {"__main__", "__mp_main__"}:
                             ui.label('Mode').classes(unit_classes)
 
 
-                plot = ui.matplotlib(figsize=(8, 6))
+                plot = ui.matplotlib(figsize=(16, 7)).classes('w-full flex-1')
                 with plot.figure as fig:
                     update_plot()
 
         with splitter.after:
-            with ui.column().classes('w-full h-full min-w-0 flex flex-col'):
-                ui.label('Log (tail)').classes('font-bold')
-                log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto')
-                log_view.set_visibility(True)
+            with ui.column().classes('w-full h-full min-w-0 flex flex-col p-2'):
+                ui.label('Acoustic Analysis').classes('text-xl font-bold mb-1')
+                ir_fr_plot = ui.matplotlib(figsize=(16, 12)).classes('w-full flex-1')
+                with ir_fr_plot.figure as fig_ir_fr:
+                    # Initial empty plots or load latest on start
+                    pass
+                
+                ui.button('Refresh Plots', icon='refresh', on_click=lambda: update_ir_fr_plots(ir_fr_plot)).classes('mt-2')
 
                 def tail_scanner_log():
                     if log_handler is None:
@@ -647,6 +732,10 @@ if __name__ in {"__main__", "__mp_main__"}:
     ui.timer(0.5, update_scanner_position)
 
     # Note: Using ui.timer instead of a raw background loop so it shuts down cleanly with NiceGUI
-    ui.timer(1.0, watch_file)
+    ui.timer(1.0, lambda: watch_file(plot, ir_fr_plot))
+
+    # Start measurements if nfs exists
+    if nfs:
+        update_ir_fr_plots(ir_fr_plot)
 
     ui.run(reload=False)

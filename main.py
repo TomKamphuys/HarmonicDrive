@@ -539,9 +539,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                     ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
 
                 with ui.row().classes('w-full justify-start items-center gap-8'):
-                    alarm_badge = ui.badge('ALARM').props('color=red outline')
-                    alarm_badge.visible = False  # off until alarm happens
-
                     # position_label = ui.label('Position: —') # Replaced with individual axis labels
                     with ui.row().classes('gap-4 items-center'):
                         # 7-segment style display: Share Tech Mono font, high contrast
@@ -633,17 +630,18 @@ if __name__ in {"__main__", "__mp_main__"}:
         else:
             pos_state.set_text('   —   ')
 
-        # Alarm indicator: flash red in ALARM, turn off otherwise
+        # Update state text color and handle alarm logic: flash red and blink in ALARM, turn green otherwise
         if _scanner_has_alarm():
-            alarm_badge.visible = True
-            alarm_badge.classes(add='alarm_blink')
+            # Change the large state text to red and add the flashing animation
+            pos_state.classes(remove='text-[#7eff00]').classes(add='text-red-600 alarm_blink')
 
             # During/after alarm: HOME must be orange until a successful home is performed
             home_state['ok'] = False
             _set_home_button_color('orange')
         else:
-            alarm_badge.visible = False
-            alarm_badge.classes(remove='alarm_blink')
+            # Reset to the original green color when not in alarm
+            pos_state.classes(remove='text-red-600 alarm_blink').classes(add='text-[#7eff00]')
+
             _set_home_button_color('green' if home_state['ok'] else 'orange')
 
     ui.timer(0.5, update_scanner_position)

@@ -343,7 +343,7 @@ if __name__ in {"__main__", "__mp_main__"}:
     args = parser.parse_args()
     config_file = args.config
 
-    setup_logging(config_file)
+    setup_logging(config_file, project_name="HarmonicDrive")
 
     # In-memory log buffer for the UI
     class LogBuffer:

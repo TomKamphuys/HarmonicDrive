@@ -11,7 +11,6 @@ from pathlib import Path
 
 from loguru import logger
 
-
 from nfs import NearFieldScannerFactory, ScannerFactory
 from nfs.logging_config import setup_logging
 
@@ -22,22 +21,27 @@ ui.add_head_html('<link href="https://fonts.googleapis.com/css2?family=Share+Tec
 
 log_handler = None
 
+
 # --- Loguru: setup handled by nfs.logging_config ---
 # We keep log_button_click for UI events.
 
 def log_button_click(label: str, handler):
     """Wrap a NiceGUI on_click handler to log the click and then run it (sync or async)."""
+
     async def _wrapped(*args, **kwargs):
         logger.info("UI click: {}", label)
         result = handler(*args, **kwargs)
         if asyncio.iscoroutine(result):
             return await result
         return result
+
     return _wrapped
+
 
 # --- Dedicated Audio Worker Thread (ASIO Fix) ---
 # This worker ensures all ASIO calls happen on one consistent thread with COM initialized.
 audio_queue = queue.Queue()
+
 
 def audio_worker():
     """A dedicated thread with COM initialization for picky ASIO drivers."""
@@ -50,10 +54,10 @@ def audio_worker():
 
     while True:
         item = audio_queue.get()
-        if item is None: 
-            break 
-        
-        # Unpack the 4 items, including the specific asyncio loop
+        if item is None:
+            break
+
+            # Unpack the 4 items, including the specific asyncio loop
         func, args, done_event, loop = item
         try:
             func(*args)
@@ -70,16 +74,16 @@ def audio_worker():
             # This ensures the UI buttons re-enable even if an error occurs
             loop.call_soon_threadsafe(done_event.set)
             audio_queue.task_done()
-    
+
     try:
         ctypes.windll.ole32.CoUninitialize()
     except:
         pass
 
+
 # Start the daemon worker thread immediately
 worker_thread = threading.Thread(target=audio_worker, daemon=True)
 worker_thread.start()
-
 
 # --- CSS Styles ---
 ui.add_css("""
@@ -155,8 +159,10 @@ ui.add_css("""
 }
 """)
 
+
 def start_nfs():
     pass
+
 
 def stop_nfs():
     print('Stopping NFS')
@@ -167,6 +173,7 @@ def stop_nfs():
     except Exception as e:
         print(f"Error during shutdown: {e}")
 
+
 def hold_scanner():
     """Stop motion only (do NOT stop NFS)."""
     try:
@@ -174,11 +181,14 @@ def hold_scanner():
     except Exception as e:
         print(f"Error during HOLD: {e}")
 
+
 def DEMO_move_to_stool():
     scanner.planar_move_to(-500.0, -500.0)
 
+
 # This is the correct way to register the shutdown hook
 app.on_shutdown(stop_nfs)
+
 
 def rehome():
     scanner.softreset()
@@ -187,9 +197,11 @@ def rehome():
     time.sleep(1)
     scanner.home()
 
+
 async def take_measurement():
     # Not used directly in UI anymore, but kept for reference
     nfs.take_measurement_set()
+
 
 async def async_task():
     """Offload measurement set to dedicated audio thread."""
@@ -214,6 +226,7 @@ async def async_task():
         for button in greyable_buttons:
             button.enable()
 
+
 async def async_single_measurement_task():
     """Offload single measurement to dedicated audio thread."""
     ui.notify('Single measurement started')
@@ -235,6 +248,7 @@ async def async_single_measurement_task():
         for button in greyable_buttons:
             button.enable()
 
+
 async def safe_move(func, *args):
     """Wrapper to disable UI, run a hardware command, then re-enable UI"""
     for button in greyable_buttons:
@@ -245,33 +259,35 @@ async def safe_move(func, *args):
         for button in greyable_buttons:
             button.enable()
 
+
 async def zero_nfs_then_apply_height_offset(height_value: float):
     """Zero NFS, then apply the given height offset above stool."""
     await run.io_bound(scanner.set_as_zero)
     await run.io_bound(scanner.set_speaker_center_above_stool, height_value)
+
 
 def load_measurement_data():
     """Load cylindrical coordinates from measurement_positions.csv and convert to azimuth/elevation"""
     file_path = Path('measurement_positions.csv')
     if not file_path.exists():
         return None, None
-    
+
     try:
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
         data = np.atleast_2d(data)  # <--- Add this line
         if data.size == 0:
             return None, None
-        
+
         r = data[:, 0]
         theta = data[:, 1]  # This is azimuth (theta)
         z = data[:, 2]
-        
+
         # Calculate elevation angle from cylindrical coordinates
         elevation = np.degrees(np.arctan2(z, r))
-        
+
         # Azimuth is already theta
         azimuth = theta
-        
+
         return azimuth, elevation
     except Exception as e:
         print(f"Error loading data: {e}")
@@ -281,28 +297,28 @@ def load_measurement_data():
 def update_plot():
     """Update the 2D plot with azimuth and elevation data"""
     azimuth, elevation = load_measurement_data()
-    
+
     fig.clear()
     fig.set_layout_engine('constrained')
     ax = fig.add_subplot(111)
-    
+
     if azimuth is not None and elevation is not None:
         scatter = ax.scatter(azimuth, elevation, c=elevation, cmap='viridis', marker='o', s=20)
         ax.set_xlabel('Azimuth (degrees)')
         ax.set_ylabel('Elevation (degrees)')
         ax.set_title('Measurement Points (Azimuth vs Elevation)')
-        
+
         # Set axis limits
         ax.set_xlim(-180, 180)
         ax.set_ylim(-90, 90)
-        
+
         # Add colorbar
         fig.colorbar(scatter, ax=ax, label='Elevation (degrees)')
-        
+
         # Add grid for better readability
         ax.grid(True, alpha=0.3)
     else:
-        ax.text(0, 0, 'No data available', 
+        ax.text(0, 0, 'No data available',
                 horizontalalignment='center', verticalalignment='center')
         ax.set_xlabel('Azimuth (degrees)')
         ax.set_ylabel('Elevation (degrees)')
@@ -310,7 +326,7 @@ def update_plot():
         ax.set_xlim(-180, 180)
         ax.set_ylim(-90, 90)
         ax.grid(True, alpha=0.3)
-    
+
     plot.update()
 
 
@@ -331,11 +347,11 @@ def update_ir_fr_plots(ir_plot_container):
         return
 
     latest_file = max(wav_files, key=lambda f: f.stat().st_mtime)
-    
+
     try:
         ir, fs = sf.read(str(latest_file))
         if len(ir.shape) > 1:
-            ir = ir[:, 0] # mono only
+            ir = ir[:, 0]  # mono only
     except Exception as e:
         logger.error(f"Error loading IR: {e}")
         return
@@ -344,24 +360,24 @@ def update_ir_fr_plots(ir_plot_container):
     zoom_ms = 15.0
     zoom_samples = int((zoom_ms / 1000.0) * fs)
     peak_idx = np.argmax(np.abs(ir))
-    
+
     start_idx = max(0, peak_idx - int(zoom_samples / 4))
     end_idx = start_idx + zoom_samples
-    
+
     ir_zoom = ir[start_idx:end_idx]
-    time_axis = (np.arange(len(ir_zoom)) / fs) * 1000.0 # ms
+    time_axis = (np.arange(len(ir_zoom)) / fs) * 1000.0  # ms
 
     # Calculate Frequency Response (FR)
-    n_fft = 2**int(np.ceil(np.log2(len(ir))))
+    n_fft = 2 ** int(np.ceil(np.log2(len(ir))))
     fr = np.fft.rfft(ir, n=n_fft)
-    freqs = np.fft.rfftfreq(n_fft, d=1/fs)
+    freqs = np.fft.rfftfreq(n_fft, d=1 / fs)
     mag_db = 20 * np.log10(np.abs(fr) + 1e-12)
 
     with ir_plot_container:
         fig_ir_fr = ir_plot_container.figure
         fig_ir_fr.clear()
         fig_ir_fr.set_layout_engine('constrained')
-        
+
         # IR Plot
         ax1 = fig_ir_fr.add_subplot(2, 1, 1)
         ax1.plot(time_axis, ir_zoom)
@@ -417,6 +433,7 @@ if __name__ in {"__main__", "__mp_main__"}:
 
     setup_logging(config_file, project_name="HarmonicDrive")
 
+
     # In-memory log buffer for the UI
     class LogBuffer:
         def __init__(self, max_lines=2000):
@@ -427,13 +444,16 @@ if __name__ in {"__main__", "__mp_main__"}:
             # Loguru sends the message as a string (including newline)
             self.buffer.put(message.strip())
 
+
     log_handler = LogBuffer()
-    logger.add(log_handler.write, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}")
+    logger.add(log_handler.write, level="INFO",
+               format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}")
 
     scanner = ScannerFactory.create(config_file)
     nfs = NearFieldScannerFactory.create(scanner, config_file)
 
     greyable_buttons = []
+
 
     def add_jog_row(axis: str, left_label: str, right_label: str, unit: str,
                     left_moves: list, right_moves: list):
@@ -452,7 +472,8 @@ if __name__ in {"__main__", "__mp_main__"}:
                 for value, func in left_moves:
                     b = ui.button(
                         f'{value}',
-                        on_click=log_button_click(f'{axis} {left_label} {value}{unit}', lambda v=value, f=func: safe_move(f, v)),
+                        on_click=log_button_click(f'{axis} {left_label} {value}{unit}',
+                                                  lambda v=value, f=func: safe_move(f, v)),
                     ).classes('jog-btn')
                     greyable_buttons.append(b)
 
@@ -467,12 +488,15 @@ if __name__ in {"__main__", "__mp_main__"}:
                 for value, func in right_moves:
                     b = ui.button(
                         f'{value}',
-                        on_click=log_button_click(f'{axis} {right_label} {value}{unit}', lambda v=value, f=func: safe_move(f, v)),
+                        on_click=log_button_click(f'{axis} {right_label} {value}{unit}',
+                                                  lambda v=value, f=func: safe_move(f, v)),
                     ).classes('jog-btn')
                     greyable_buttons.append(b)
 
+
     # Plot axis limits
     AXIS_LIMIT = 400
+
 
     def _scanner_has_alarm() -> bool:
         """Alarm is active when GrblMachineState == ALARM."""
@@ -485,9 +509,11 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             return False
 
+
     def _is_home_successful() -> bool:
         """Homing is considered successful if we're not in ALARM."""
         return not _scanner_has_alarm()
+
 
     def _set_home_button_color(color: str) -> None:
         """Update HOME button color (NiceGUI Quasar color names: 'orange', 'green', etc.)."""
@@ -496,15 +522,18 @@ if __name__ in {"__main__", "__mp_main__"}:
         except Exception:
             pass
 
+
     # Whole app layout: left = controls + dials + plot, right = IR/FR plots
     # Logging is now in a separate toggleable dialog
     log_dialog = ui.dialog().props('full-width')
-    with log_dialog, ui.card().classes('w-full flex flex-col').style('height: 80vh; resize: both; overflow: auto; min-height: 400px;'):
+    with log_dialog, ui.card().classes('w-full flex flex-col').style(
+            'height: 80vh; resize: both; overflow: auto; min-height: 400px;'):
         with ui.row().classes('w-full justify-between items-center'):
             ui.label('System Log').classes('text-xl font-bold')
             ui.button(icon='close', on_click=log_dialog.close).props('flat')
-        log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto border rounded p-2').style('white-space: pre')
-    
+        log_view = ui.log(max_lines=2000).classes('w-full flex-1 overflow-auto border rounded p-2').style(
+            'white-space: pre')
+
     with ui.splitter(value=50).classes('w-full h-screen items-stretch') as splitter:
         with splitter.before:
             with ui.column().classes('w-full h-full min-w-0 overflow-auto px-2 py-2'):
@@ -515,8 +544,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='CW',
                     right_label='CCW',
                     unit='Deg',
-                    left_moves=[(120, scanner.rotate_cw), (60, scanner.rotate_cw), (10, scanner.rotate_cw), (1, scanner.rotate_cw)],
-                    right_moves=[(1, scanner.rotate_ccw), (10, scanner.rotate_ccw), (60, scanner.rotate_ccw), (120, scanner.rotate_ccw)],
+                    left_moves=[(120, scanner.rotate_cw), (60, scanner.rotate_cw), (10, scanner.rotate_cw),
+                                (1, scanner.rotate_cw)],
+                    right_moves=[(1, scanner.rotate_ccw), (10, scanner.rotate_ccw), (60, scanner.rotate_ccw),
+                                 (120, scanner.rotate_ccw)],
                 )
 
                 add_jog_row(
@@ -524,8 +555,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='IN',
                     right_label='OUT',
                     unit='mm',
-                    left_moves=[(120, scanner.move_in), (60, scanner.move_in), (10, scanner.move_in), (1, scanner.move_in)],
-                    right_moves=[(1, scanner.move_out), (10, scanner.move_out), (60, scanner.move_out), (120, scanner.move_out)],
+                    left_moves=[(120, scanner.move_in), (60, scanner.move_in), (10, scanner.move_in),
+                                (1, scanner.move_in)],
+                    right_moves=[(1, scanner.move_out), (10, scanner.move_out), (60, scanner.move_out),
+                                 (120, scanner.move_out)],
                 )
 
                 add_jog_row(
@@ -533,11 +566,14 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='DOWN',
                     right_label='UP',
                     unit='mm',
-                    left_moves=[(120, scanner.move_down), (60, scanner.move_down), (10, scanner.move_down), (1, scanner.move_down)],
-                    right_moves=[(1, scanner.move_up), (10, scanner.move_up), (60, scanner.move_up), (120, scanner.move_up)],
+                    left_moves=[(120, scanner.move_down), (60, scanner.move_down), (10, scanner.move_down),
+                                (1, scanner.move_down)],
+                    right_moves=[(1, scanner.move_up), (10, scanner.move_up), (60, scanner.move_up),
+                                 (120, scanner.move_up)],
                 )
 
                 home_state = {'ok': False}  # startup: NOT homed => HOME stays orange until successful homing
+
 
                 async def _wait_for_home_settle(timeout_s: float = 5.0) -> bool:
                     """Wait a short time after homing for the controller to settle; succeed if not in ALARM."""
@@ -553,11 +589,13 @@ if __name__ in {"__main__", "__mp_main__"}:
                         await asyncio.sleep(0.1)
                     return not _scanner_has_alarm()
 
+
                 async def home_and_update():
                     # Run homing, then mark OK if we are not in ALARM after a brief settle period.
                     await safe_move(scanner.home)
                     home_state['ok'] = await _wait_for_home_settle()
                     _set_home_button_color('green' if home_state['ok'] else 'orange')
+
 
                 # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
                 with ui.element('div').classes('cmd-row w-full justify-start mt-1'):
@@ -610,8 +648,11 @@ if __name__ in {"__main__", "__mp_main__"}:
                 )
 
                 with ui.button_group():
-                    greyable_buttons.append(ui.button('Start measurements', on_click=log_button_click('Start measurements', async_task)))
-                    greyable_buttons.append(ui.button('Take single measurement', on_click=log_button_click('Take single measurement', async_single_measurement_task)))
+                    greyable_buttons.append(
+                        ui.button('Start measurements', on_click=log_button_click('Start measurements', async_task)))
+                    greyable_buttons.append(ui.button('Take single measurement',
+                                                      on_click=log_button_click('Take single measurement',
+                                                                                async_single_measurement_task)))
 
                 # --- Start/Stop NFS moved to the bottom of the button stack ---
                 with ui.button_group().classes('mt-1'):
@@ -625,7 +666,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                         # 7-segment style display: Share Tech Mono font, high contrast
                         card_classes = 'p-2 items-center bg-black rounded-lg border-2 border-gray-700 w-48'
                         label_classes = 'text-xs font-bold text-gray-300 uppercase tracking-widest mb-1'
-                        
+
                         # Background "inactive" segments effect: use absolute positioning to layer them
                         bg_value_classes = 'text-4xl font-bold text-[#1a3300] absolute'
                         value_classes = 'text-4xl font-bold text-[#7eff00] relative'
@@ -658,7 +699,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                                 pos_state = ui.label('   —   ').classes(value_classes).style(value_style)
                             ui.label('Mode').classes(unit_classes)
 
-
                 plot = ui.matplotlib(figsize=(16, 7)).classes('w-full flex-1')
                 with plot.figure as fig:
                     update_plot()
@@ -670,8 +710,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                 with ir_fr_plot.figure as fig_ir_fr:
                     # Initial empty plots or load latest on start
                     pass
-                
-                ui.button('Refresh Plots', icon='refresh', on_click=lambda: update_ir_fr_plots(ir_fr_plot)).classes('mt-2')
+
+                ui.button('Refresh Plots', icon='refresh', on_click=lambda: update_ir_fr_plots(ir_fr_plot)).classes(
+                    'mt-2')
+
 
                 def tail_scanner_log():
                     if log_handler is None:
@@ -683,7 +725,9 @@ if __name__ in {"__main__", "__mp_main__"}:
                     except Exception as e:
                         log_view.push(f'[buffer error] {e}')
 
+
                 ui.timer(0.5, tail_scanner_log)
+
 
     def _get_raw_state_string():
         """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
@@ -697,6 +741,7 @@ if __name__ in {"__main__", "__mp_main__"}:
             return str(st).split('.')[-1]
         except Exception:
             return None
+
 
     def update_scanner_position():
         pos = scanner.get_position()
@@ -728,6 +773,7 @@ if __name__ in {"__main__", "__mp_main__"}:
             pos_state.classes(remove='text-red-600 alarm_blink').classes(add='text-[#7eff00]')
 
             _set_home_button_color('green' if home_state['ok'] else 'orange')
+
 
     ui.timer(0.5, update_scanner_position)
 

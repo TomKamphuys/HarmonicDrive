@@ -267,10 +267,24 @@ async def zero_nfs_then_apply_height_offset(height_value: float):
 
 
 def load_measurement_data():
-    """Load cylindrical coordinates from measurement_positions.csv and convert to azimuth/elevation"""
-    file_path = Path('measurement_positions.csv')
-    if not file_path.exists():
+    """Load cylindrical coordinates from the latest measurement_points.csv in measurements/ and convert to azimuth/elevation"""
+    measurement_dir = Path('./measurements')
+    if not measurement_dir.exists():
         return None, None
+
+    # Find the latest measurement_points.csv in all session directories
+    all_csv_files = list(measurement_dir.glob('*/measurement_points.csv'))
+    if not all_csv_files:
+        # Fallback to the old root-level file if it exists, for backward compatibility
+        file_path = Path('measurement_points.csv')
+        if not file_path.exists():
+            # Check for the old filename too
+            file_path = Path('measurement_positions.csv')
+            if not file_path.exists():
+                return None, None
+    else:
+        # Get the latest one by modification time
+        file_path = max(all_csv_files, key=lambda f: f.stat().st_mtime)
 
     try:
         data = np.loadtxt(file_path, delimiter=',', skiprows=1)
@@ -400,16 +414,31 @@ def update_ir_fr_plots(ir_plot_container):
 
 
 async def watch_file(main_plot, ir_plot):
-    """Watch for changes in measurement_positions.csv"""
-    file_path = Path('measurement_positions.csv')
+    """Watch for changes in the latest measurement_points.csv in measurements/"""
+    measurement_dir = Path('./measurements')
     last_mtime = 0
+    last_file_path = None
 
     while True:
         try:
-            if file_path.exists():
-                current_mtime = file_path.stat().st_mtime
-                if current_mtime != last_mtime:
+            # Find the latest measurement_points.csv
+            all_csv_files = list(measurement_dir.glob('*/measurement_points.csv'))
+            
+            # Also check the root for temporary/old versions
+            root_csv = Path('measurement_points.csv')
+            if root_csv.exists():
+                all_csv_files.append(root_csv)
+            root_pos_csv = Path('measurement_positions.csv')
+            if root_pos_csv.exists():
+                all_csv_files.append(root_pos_csv)
+
+            if all_csv_files:
+                current_file_path = max(all_csv_files, key=lambda f: f.stat().st_mtime)
+                current_mtime = current_file_path.stat().st_mtime
+                
+                if current_mtime != last_mtime or current_file_path != last_file_path:
                     last_mtime = current_mtime
+                    last_file_path = current_file_path
                     update_plot()
                     update_ir_fr_plots(ir_plot)
             await asyncio.sleep(1)  # Check every second

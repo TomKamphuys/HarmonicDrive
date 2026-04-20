@@ -20,6 +20,11 @@ from nfs.logging_config import setup_logging
 ui.add_head_html('<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">')
 
 log_handler = None
+is_playing = False
+play_button = None
+level_input = None
+freq_input = None
+dur_input = None
 
 
 # --- Loguru: setup handled by nfs.logging_config ---
@@ -166,10 +171,14 @@ def start_nfs():
 
 def stop_nfs():
     print('Stopping NFS')
+    global is_playing
     try:
         # Signal audio thread to exit
         audio_queue.put(None)
         nfs.shutdown()
+        is_playing = False
+        if play_button:
+            play_button.props('icon=play_arrow')
     except Exception as e:
         print(f"Error during shutdown: {e}")
 
@@ -247,6 +256,43 @@ async def async_single_measurement_task():
         ui.notify('Single measurement finished')
         for button in greyable_buttons:
             button.enable()
+
+
+async def async_play_sine_task():
+    global is_playing
+    if is_playing:
+        nfs.stop_sine()
+        is_playing = False
+        if play_button:
+            play_button.props('icon=play_arrow')
+        return
+
+    # Check if level and freq have values
+    level = level_input.value if level_input.value is not None else -20.0
+    freq = freq_input.value if freq_input.value is not None else 1000.0
+    # If duration is empty (None), pass None for indefinite playback
+    dur = float(dur_input.value) if dur_input.value is not None else None
+
+    is_playing = True
+    if play_button:
+        play_button.props('icon=stop')
+
+    try:
+        loop = asyncio.get_running_loop()
+        done = asyncio.Event()
+        audio_queue.put((nfs.play_sine, (freq, level, dur), done, loop))
+        await done.wait()
+    except Exception as e:
+        logger.error(f"Play sine failed: {e}")
+        ui.notify(f"Error: {e}", type='negative')
+    finally:
+        # For fixed duration, reset state when finished.
+        # For indefinite playback (dur is None), nfs.play_sine returns immediately,
+        # so we stay in playing state until stopped by user.
+        if dur is not None:
+            is_playing = False
+            if play_button:
+                play_button.props('icon=play_arrow')
 
 
 async def safe_move(func, *args):
@@ -684,9 +730,16 @@ if __name__ in {"__main__", "__mp_main__"}:
                                                                                 async_single_measurement_task)))
 
                 # --- Start/Stop NFS moved to the bottom of the button stack ---
-                with ui.button_group().classes('mt-1'):
-                    ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
-                    ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
+                with ui.row().classes('items-center mt-1 gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        level_input = ui.number('Level (dBFS)', value=-20, format='%.1f').props('dense outlined').classes('w-32')
+                        freq_input = ui.number('Frequency (Hz)', value=1000, format='%d').props('dense outlined').classes('w-32')
+                        dur_input = ui.number('Duration (s)', value=None, format='%.1f').props('dense outlined').classes('w-32')
+                        play_button = ui.button(icon='play_arrow', on_click=log_button_click('Play Sine', async_play_sine_task)).props('round')
+
+                    with ui.button_group():
+                        ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
+                        ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
                     ui.button('Show Logs', icon='list', on_click=log_dialog.open).classes('ml-2')
 
                 with ui.row().classes('w-full justify-start items-center gap-4'):

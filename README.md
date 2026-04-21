@@ -34,8 +34,10 @@ The system supports:
 
 Clone the repo (and the NFS library next to it)
 ```bash
-git clone <repo-url> HarmonicDrive git clone <nfs-repo-url> NFS
-cd HarmonicDrive uv sync
+git clone https://github.com/TomKamphuys/HarmonicDrive.git 
+git clone https://github.com/TomKamphuys/NFS.git
+cd HarmonicDrive 
+uv sync --no-dev
 ```
 
 ### Running

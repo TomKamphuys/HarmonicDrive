@@ -6,6 +6,8 @@ import time
 import threading
 import queue
 import ctypes
+import os
+import sys
 import soundfile as sf
 from pathlib import Path
 
@@ -166,17 +168,37 @@ ui.add_css("""
 
 
 def stop_nfs():
-    print('Stopping NFS')
+    print('Stopping NFS and shutting down...')
     global is_playing
     try:
+        # Show a shutdown overlay to make it clear in the GUI
+        with ui.dialog() as dialog, ui.card():
+            ui.label('Shutting down... Please wait.').classes('text-xl font-bold')
+            ui.spinner(size='lg')
+        dialog.open()
+
         # Signal audio thread to exit
         audio_queue.put(None)
-        nfs.shutdown()
+        
+        if 'nfs' in globals() and nfs:
+            nfs.shutdown()
+        
         is_playing = False
         if play_button:
             play_button.props('icon=play_arrow')
+            
+        # Give some time for logs to flush and threads to receive signals
+        time.sleep(0.5)
+        
+        # Shut down NiceGUI
+        app.shutdown()
+        
+        # Force exit to ensure all threads (including background ones) are killed
+        # This addresses the issue of having to click stop multiple times.
+        os._exit(0)
     except Exception as e:
         print(f"Error during shutdown: {e}")
+        os._exit(1)
 
 
 def hold_scanner():
@@ -733,7 +755,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                         dur_input = ui.number('Duration (s)', value=None, format='%.1f').props('dense outlined').classes('w-32')
                         play_button = ui.button(icon='play_arrow', on_click=log_button_click('Play Sine', async_play_sine_task)).props('round')
 
-                        ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
+                        ui.button('Shutdown Program', color='red', on_click=log_button_click('Shutdown Program', stop_nfs))
                     ui.button('Show Logs', icon='list', on_click=log_dialog.open).classes('ml-2')
 
                 with ui.row().classes('w-full justify-start items-center gap-4'):

@@ -41,6 +41,12 @@ class ScannerApp:
         self.greyable_buttons = []
         self.home_state = {'ok': False}
         self.log_handler: Optional['LogBuffer'] = None
+        # UI labels
+        self.pos_r: Optional[ui.label] = None
+        self.pos_t: Optional[ui.label] = None
+        self.pos_z: Optional[ui.label] = None
+        self.pos_state: Optional[ui.label] = None
+        self.home_button: Optional[ui.button] = None
 
     def load_config(self):
         logger.info(f"(Re)loading configuration from {self.config_file}")
@@ -52,7 +58,7 @@ class ScannerApp:
         self.nfs = NearFieldScannerFactory.create(self.scanner, self.config_file)
 
         # Re-register callback to the new scanner instance
-        self.scanner.set_on_state_update_callback(update_scanner_position)
+        self.scanner.set_on_state_update_callback(self.update_scanner_position)
 
     def reload_config_ui(self):
         try:
@@ -61,6 +67,78 @@ class ScannerApp:
         except Exception as e:
             logger.error(f"Failed to reload configuration: {e}")
             ui.notify(f"Reload failed: {e}", type='negative')
+
+    def _get_raw_state_string(self):
+        """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
+        try:
+            st = self.scanner.get_state()
+            if st is None:
+                return None
+            # Return only the enum name (e.g., 'IDLE' instead of 'GrblStateMachine.IDLE')
+            if hasattr(st, 'name'):
+                return st.name
+            return str(st).split('.')[-1]
+        except Exception:
+            return None
+
+    def update_scanner_position(self, pos=None, state=None):
+        def do_update():
+            nonlocal pos, state
+            if pos is None:
+                pos = self.scanner.get_position()
+            if pos is not None:
+                if self.pos_r: self.pos_r.set_text(f'{pos.r():7.2f}')
+                if self.pos_t: self.pos_t.set_text(f'{pos.t():7.2f}')
+                if self.pos_z: self.pos_z.set_text(f'{pos.z():7.2f}')
+            else:
+                if self.pos_r: self.pos_r.set_text('   —   ')
+                if self.pos_t: self.pos_t.set_text('   —   ')
+                if self.pos_z: self.pos_z.set_text('   —   ')
+
+            if state is None:
+                raw_state = self._get_raw_state_string()
+            else:
+                raw_state = state.name if hasattr(state, 'name') else str(state).split('.')[-1]
+
+            if self.pos_state:
+                if raw_state is not None:
+                    self.pos_state.set_text(f'{raw_state:^8}')
+                else:
+                    self.pos_state.set_text('   —   ')
+
+            # Update state text color and handle alarm logic: flash red and blink in ALARM, turn green otherwise
+            if _scanner_has_alarm():
+                # Change the large state text to red and add the flashing animation
+                if self.pos_state:
+                    self.pos_state.classes(remove='text-[#7eff00]').classes(add='text-red-600 alarm_blink')
+
+                # During/after alarm: HOME must be orange until a successful home is performed
+                self.home_state['ok'] = False
+                self._set_home_button_color('orange')
+            else:
+                # Reset to the original green color when not in alarm
+                if self.pos_state:
+                    self.pos_state.classes(remove='text-red-600 alarm_blink').classes(add='text-[#7eff00]')
+
+                self._set_home_button_color('green' if self.home_state['ok'] else 'orange')
+
+        # Schedule the update on the main event loop to be thread-safe
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(do_update)
+            else:
+                do_update()
+        except RuntimeError:
+            do_update()
+
+    def _set_home_button_color(self, color: str) -> None:
+        """Update HOME button color (NiceGUI Quasar color names: 'orange', 'green', etc.)."""
+        try:
+            if self.home_button:
+                self.home_button.props(f'color={color}')
+        except Exception:
+            pass
 
 
 # Global instance
@@ -652,15 +730,7 @@ if __name__ in {"__main__", "__mp_main__"}:
         return not _scanner_has_alarm()
 
 
-    def _set_home_button_color(color: str) -> None:
-        """Update HOME button color (NiceGUI Quasar color names: 'orange', 'green', etc.)."""
-        try:
-            home_button.props(f'color={color}')
-        except Exception:
-            pass
-
-
-    # Whole app layout: left = controls + dials + plot, right = IR/FR plots
+    # Note: Using ui.timer instead of a raw background loop so it shuts down cleanly with NiceGUI
     # Logging is now in a separate toggleable dialog
     log_dialog = ui.dialog().props('full-width')
     with log_dialog, ui.card().classes('w-full flex flex-col').style(
@@ -731,12 +801,12 @@ if __name__ in {"__main__", "__mp_main__"}:
                     # Run homing, then mark OK if we are not in ALARM after a brief settle period.
                     await safe_move(get_scanner().home)
                     scanner_app.home_state['ok'] = await _wait_for_home_settle()
-                    _set_home_button_color('green' if scanner_app.home_state['ok'] else 'orange')
+                    scanner_app._set_home_button_color('green' if scanner_app.home_state['ok'] else 'orange')
 
 
                 # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
                 with ui.element('div').classes('cmd-row w-full justify-start mt-1'):
-                    home_button = ui.button(
+                    scanner_app.home_button = ui.button(
                         'HOME',
                         color='orange',  # startup: orange
                         on_click=log_button_click('Home', home_and_update),
@@ -820,26 +890,26 @@ if __name__ in {"__main__", "__mp_main__"}:
                             ui.label('R (Radius)').classes(label_classes)
                             with ui.element('div').classes('relative'):
                                 ui.label(' 888.88').classes(bg_value_classes).style(value_style)
-                                pos_r = ui.label(' 000.00').classes(value_classes).style(value_style)
+                                scanner_app.pos_r = ui.label(' 000.00').classes(value_classes).style(value_style)
                             ui.label('mm').classes(unit_classes)
                         with ui.card().classes(card_classes):
                             ui.label('T (Theta)').classes(label_classes)
                             with ui.element('div').classes('relative'):
                                 ui.label(' 888.88').classes(bg_value_classes).style(value_style)
-                                pos_t = ui.label(' 000.00').classes(value_classes).style(value_style)
+                                scanner_app.pos_t = ui.label(' 000.00').classes(value_classes).style(value_style)
                             ui.label('°').classes(unit_classes)
                         with ui.card().classes(card_classes):
                             ui.label('Z (Height)').classes(label_classes)
                             with ui.element('div').classes('relative'):
                                 ui.label(' 888.88').classes(bg_value_classes).style(value_style)
-                                pos_z = ui.label(' 000.00').classes(value_classes).style(value_style)
+                                scanner_app.pos_z = ui.label(' 000.00').classes(value_classes).style(value_style)
                             ui.label('mm').classes(unit_classes)
 
                         with ui.card().classes(card_classes):
                             ui.label('Status').classes(label_classes)
                             with ui.element('div').classes('relative'):
                                 ui.label('XXXXXXXX').classes(bg_value_classes).style(value_style)
-                                pos_state = ui.label('   —   ').classes(value_classes).style(value_style)
+                                scanner_app.pos_state = ui.label('   —   ').classes(value_classes).style(value_style)
                             ui.label('Mode').classes(unit_classes)
 
                 plot = ui.matplotlib(figsize=(16, 7)).classes('w-full flex-1')
@@ -871,71 +941,6 @@ if __name__ in {"__main__", "__mp_main__"}:
 
                 ui.timer(0.5, tail_scanner_log)
 
-
-    def _get_raw_state_string():
-        """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
-        try:
-            st = get_scanner().get_state()
-            if st is None:
-                return None
-            # Return only the enum name (e.g., 'IDLE' instead of 'GrblStateMachine.IDLE')
-            if hasattr(st, 'name'):
-                return st.name
-            return str(st).split('.')[-1]
-        except Exception:
-            return None
-
-
-    def update_scanner_position(pos=None, state=None):
-        def do_update():
-            nonlocal pos, state
-            if pos is None:
-                pos = get_scanner().get_position()
-            if pos is not None:
-                pos_r.set_text(f'{pos.r():7.2f}')
-                pos_t.set_text(f'{pos.t():7.2f}')
-                pos_z.set_text(f'{pos.z():7.2f}')
-            else:
-                pos_r.set_text('   —   ')
-                pos_t.set_text('   —   ')
-                pos_z.set_text('   —   ')
-
-            if state is None:
-                raw_state = _get_raw_state_string()
-            else:
-                raw_state = state.name if hasattr(state, 'name') else str(state).split('.')[-1]
-
-            if raw_state is not None:
-                pos_state.set_text(f'{raw_state:^8}')
-            else:
-                pos_state.set_text('   —   ')
-
-            # Update state text color and handle alarm logic: flash red and blink in ALARM, turn green otherwise
-            if _scanner_has_alarm():
-                # Change the large state text to red and add the flashing animation
-                pos_state.classes(remove='text-[#7eff00]').classes(add='text-red-600 alarm_blink')
-
-                # During/after alarm: HOME must be orange until a successful home is performed
-                scanner_app.home_state['ok'] = False
-                _set_home_button_color('orange')
-            else:
-                # Reset to the original green color when not in alarm
-                pos_state.classes(remove='text-red-600 alarm_blink').classes(add='text-[#7eff00]')
-
-                _set_home_button_color('green' if scanner_app.home_state['ok'] else 'orange')
-
-        # Schedule the update on the main event loop to be thread-safe
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.call_soon_threadsafe(do_update)
-            else:
-                do_update()
-        except RuntimeError:
-            do_update()
-
-
-    get_scanner().set_on_state_update_callback(update_scanner_position)
 
     # Note: Using ui.timer instead of a raw background loop so it shuts down cleanly with NiceGUI
     ui.timer(1.0, lambda: watch_file(plot, ir_fr_plot))

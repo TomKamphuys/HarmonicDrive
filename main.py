@@ -167,14 +167,23 @@ ui.add_css("""
 """)
 
 
-def stop_nfs():
+shutdown_started = False
+
+async def stop_nfs():
+    global shutdown_started
+    if shutdown_started:
+        return
+    shutdown_started = True
+    
     print('Stopping NFS and shutting down...')
     global is_playing
     try:
-        # Show a shutdown overlay to make it clear in the GUI
-        with ui.dialog() as dialog, ui.card():
-            ui.label('Shutting down... Please wait.').classes('text-xl font-bold')
-            ui.spinner(size='lg')
+        # Show a persistent overlay to make it clear in the GUI
+        with ui.dialog().props('persistent') as dialog, ui.card().classes('items-center shadow-24'):
+            ui.label('PROGRAM STOPPED').classes('text-3xl font-bold text-red-600')
+            ui.label('The scanner is shutting down safely.').classes('text-lg')
+            ui.label('You may now close this browser tab.').classes('text-gray-500 mt-2')
+            ui.spinner(size='lg', color='red').classes('mt-4')
         dialog.open()
 
         # Signal audio thread to exit
@@ -187,14 +196,14 @@ def stop_nfs():
         if play_button:
             play_button.props('icon=play_arrow')
             
-        # Give some time for logs to flush and threads to receive signals
-        time.sleep(0.5)
+        # Give some time for the UI to render and the user to see the message
+        # before the connection is actually lost.
+        await asyncio.sleep(2.0)
         
         # Shut down NiceGUI
         app.shutdown()
         
         # Force exit to ensure all threads (including background ones) are killed
-        # This addresses the issue of having to click stop multiple times.
         os._exit(0)
     except Exception as e:
         print(f"Error during shutdown: {e}")
@@ -207,10 +216,6 @@ def hold_scanner():
         scanner.hold()
     except Exception as e:
         print(f"Error during HOLD: {e}")
-
-
-def DEMO_move_to_stool():
-    scanner.planar_move_to(-500.0, -500.0)
 
 
 # This is the correct way to register the shutdown hook

@@ -10,10 +10,14 @@ import os
 import sys
 import soundfile as sf
 from pathlib import Path
+from typing import Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from nfs.scanner import Scanner
+    from nfs.nfs import NearFieldScanner
 
 from loguru import logger
 
-from nfs import NearFieldScannerFactory, ScannerFactory
+from nfs import NearFieldScannerFactory, ScannerFactory, Scanner, NearFieldScanner
 from nfs.logging_config import setup_logging
 
 # --- 7-segment look: load digital-ish font ---
@@ -27,6 +31,48 @@ play_button = None
 level_input = None
 freq_input = None
 dur_input = None
+
+
+class ScannerApp:
+    def __init__(self, config_file: str):
+        self.config_file = config_file
+        self.scanner: Optional[Scanner] = None
+        self.nfs: Optional[NearFieldScanner] = None
+        self.greyable_buttons = []
+        self.home_state = {'ok': False}
+        self.log_handler: Optional['LogBuffer'] = None
+
+    def load_config(self):
+        logger.info(f"(Re)loading configuration from {self.config_file}")
+        setup_logging(self.config_file, project_name="HarmonicDrive")
+
+        # Create or reuse scanner
+        self.scanner = ScannerFactory.create(self.config_file)
+        # Create or reuse NFS
+        self.nfs = NearFieldScannerFactory.create(self.scanner, self.config_file)
+
+        # Re-register callback to the new scanner instance
+        self.scanner.set_on_state_update_callback(update_scanner_position)
+
+    def reload_config_ui(self):
+        try:
+            self.load_config()
+            ui.notify("Configuration reloaded successfully", type='positive')
+        except Exception as e:
+            logger.error(f"Failed to reload configuration: {e}")
+            ui.notify(f"Reload failed: {e}", type='negative')
+
+
+# Global instance
+scanner_app: Optional[ScannerApp] = None
+
+
+def get_scanner() -> Scanner:
+    return scanner_app.scanner
+
+
+def get_nfs() -> NearFieldScanner:
+    return scanner_app.nfs
 
 
 # --- Loguru: setup handled by nfs.logging_config ---
@@ -180,8 +226,8 @@ def stop_nfs():
         # Signal audio thread to exit
         audio_queue.put(None)
         
-        if 'nfs' in globals() and nfs:
-            nfs.shutdown()
+        if 'scanner_app' in globals() and scanner_app and scanner_app.nfs:
+            scanner_app.nfs.shutdown()
         
         is_playing = False
         if play_button:
@@ -204,13 +250,13 @@ def stop_nfs():
 def hold_scanner():
     """Stop motion only (do NOT stop NFS)."""
     try:
-        scanner.hold()
+        get_scanner().hold()
     except Exception as e:
         print(f"Error during HOLD: {e}")
 
 
 def DEMO_move_to_stool():
-    scanner.planar_move_to(-500.0, -500.0)
+    get_scanner().planar_move_to(-500.0, -500.0)
 
 
 # This is the correct way to register the shutdown hook
@@ -218,22 +264,22 @@ app.on_shutdown(stop_nfs)
 
 
 def rehome():
-    scanner.softreset()
+    get_scanner().softreset()
     time.sleep(1)
-    scanner.clear_alarm()
+    get_scanner().clear_alarm()
     time.sleep(1)
-    scanner.home()
+    get_scanner().home()
 
 
 async def take_measurement():
     # Not used directly in UI anymore, but kept for reference
-    nfs.take_measurement_set()
+    get_nfs().take_measurement_set()
 
 
 async def async_task():
     """Offload measurement set to dedicated audio thread."""
     ui.notify('Measurement started')
-    for button in greyable_buttons:
+    for button in scanner_app.greyable_buttons:
         button.disable()
 
     try:
@@ -241,7 +287,7 @@ async def async_task():
         loop = asyncio.get_running_loop()
         done = asyncio.Event()
         # Send the task to the queue: (function, args, event, loop)
-        audio_queue.put((nfs.take_measurement_set, (), done, loop))
+        audio_queue.put((get_nfs().take_measurement_set, (), done, loop))
         # Wait for the worker to signal completion
         await done.wait()
     except Exception as e:
@@ -250,14 +296,14 @@ async def async_task():
     finally:
         # Use finally to ensure buttons re-enable even if the task fails
         ui.notify('Measurement finished')
-        for button in greyable_buttons:
+        for button in scanner_app.greyable_buttons:
             button.enable()
 
 
 async def async_single_measurement_task():
     """Offload single measurement to dedicated audio thread."""
     ui.notify('Single measurement started')
-    for button in greyable_buttons:
+    for button in scanner_app.greyable_buttons:
         button.disable()
 
     try:
@@ -265,21 +311,21 @@ async def async_single_measurement_task():
         loop = asyncio.get_running_loop()
         done = asyncio.Event()
         # Send the task to the queue: (function, args, event, loop)
-        audio_queue.put((nfs.take_single_measurement, (), done, loop))
+        audio_queue.put((get_nfs().take_single_measurement, (), done, loop))
         await done.wait()
     except Exception as e:
         logger.error(f"Single measurement failed: {e}")
         ui.notify(f"Error: {e}", type='negative')
     finally:
         ui.notify('Single measurement finished')
-        for button in greyable_buttons:
+        for button in scanner_app.greyable_buttons:
             button.enable()
 
 
 async def async_play_sine_task():
     global is_playing
     if is_playing:
-        nfs.stop_sine()
+        get_nfs().stop_sine()
         is_playing = False
         if play_button:
             play_button.props('icon=play_arrow')
@@ -298,7 +344,7 @@ async def async_play_sine_task():
     try:
         loop = asyncio.get_running_loop()
         done = asyncio.Event()
-        audio_queue.put((nfs.play_sine, (freq, level, dur), done, loop))
+        audio_queue.put((get_nfs().play_sine, (freq, level, dur), done, loop))
         await done.wait()
     except Exception as e:
         logger.error(f"Play sine failed: {e}")
@@ -315,19 +361,19 @@ async def async_play_sine_task():
 
 async def safe_move(func, *args):
     """Wrapper to disable UI, run a hardware command, then re-enable UI"""
-    for button in greyable_buttons:
+    for button in scanner_app.greyable_buttons:
         button.disable()
     try:
         await run.io_bound(func, *args)
     finally:
-        for button in greyable_buttons:
+        for button in scanner_app.greyable_buttons:
             button.enable()
 
 
 async def zero_nfs_then_apply_height_offset(height_value: float):
     """Zero NFS, then apply the given height offset above stool."""
-    await run.io_bound(scanner.set_as_zero)
-    await run.io_bound(scanner.set_speaker_center_above_stool, height_value)
+    await run.io_bound(get_scanner().set_as_zero)
+    await run.io_bound(get_scanner().set_speaker_center_above_stool, height_value)
 
 
 def load_measurement_data():
@@ -524,7 +570,8 @@ if __name__ in {"__main__", "__mp_main__"}:
     args = parser.parse_args()
     config_file = args.config
 
-    setup_logging(config_file, project_name="HarmonicDrive")
+    scanner_app = ScannerApp(config_file)
+    scanner_app.load_config()
 
 
     # In-memory log buffer for the UI
@@ -539,13 +586,10 @@ if __name__ in {"__main__", "__mp_main__"}:
 
 
     log_handler = LogBuffer()
+    scanner_app.log_handler = log_handler
     logger.add(log_handler.write, level="INFO",
                format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}")
 
-    scanner = ScannerFactory.create(config_file)
-    nfs = NearFieldScannerFactory.create(scanner, config_file)
-
-    greyable_buttons = []
 
 
     def add_jog_row(axis: str, left_label: str, right_label: str, unit: str,
@@ -568,7 +612,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                         on_click=log_button_click(f'{axis} {left_label} {value}{unit}',
                                                   lambda v=value, f=func: safe_move(f, v)),
                     ).classes('jog-btn')
-                    greyable_buttons.append(b)
+                    scanner_app.greyable_buttons.append(b)
 
                 # STOP button: HOLD only (do NOT disable; should work even during measurements)
                 ui.button(
@@ -584,7 +628,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                         on_click=log_button_click(f'{axis} {right_label} {value}{unit}',
                                                   lambda v=value, f=func: safe_move(f, v)),
                     ).classes('jog-btn')
-                    greyable_buttons.append(b)
+                    scanner_app.greyable_buttons.append(b)
 
 
     # Plot axis limits
@@ -594,7 +638,7 @@ if __name__ in {"__main__", "__mp_main__"}:
     def _scanner_has_alarm() -> bool:
         """Alarm is active when GrblMachineState == ALARM."""
         try:
-            st = scanner.get_state()
+            st = get_scanner().get_state()
             if st is None:
                 return False
             name = getattr(st, 'name', str(st))
@@ -637,10 +681,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='CW',
                     right_label='CCW',
                     unit='Deg',
-                    left_moves=[(120, scanner.rotate_cw), (60, scanner.rotate_cw), (10, scanner.rotate_cw),
-                                (1, scanner.rotate_cw)],
-                    right_moves=[(1, scanner.rotate_ccw), (10, scanner.rotate_ccw), (60, scanner.rotate_ccw),
-                                 (120, scanner.rotate_ccw)],
+                    left_moves=[(120, get_scanner().rotate_cw), (60, get_scanner().rotate_cw), (10, get_scanner().rotate_cw),
+                                (1, get_scanner().rotate_cw)],
+                    right_moves=[(1, get_scanner().rotate_ccw), (10, get_scanner().rotate_ccw), (60, get_scanner().rotate_ccw),
+                                 (120, get_scanner().rotate_ccw)],
                 )
 
                 add_jog_row(
@@ -648,10 +692,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='IN',
                     right_label='OUT',
                     unit='mm',
-                    left_moves=[(120, scanner.move_in), (60, scanner.move_in), (10, scanner.move_in),
-                                (1, scanner.move_in)],
-                    right_moves=[(1, scanner.move_out), (10, scanner.move_out), (60, scanner.move_out),
-                                 (120, scanner.move_out)],
+                    left_moves=[(120, get_scanner().move_in), (60, get_scanner().move_in), (10, get_scanner().move_in),
+                                (1, get_scanner().move_in)],
+                    right_moves=[(1, get_scanner().move_out), (10, get_scanner().move_out), (60, get_scanner().move_out),
+                                 (120, get_scanner().move_out)],
                 )
 
                 add_jog_row(
@@ -659,10 +703,10 @@ if __name__ in {"__main__", "__mp_main__"}:
                     left_label='DOWN',
                     right_label='UP',
                     unit='mm',
-                    left_moves=[(120, scanner.move_down), (60, scanner.move_down), (10, scanner.move_down),
-                                (1, scanner.move_down)],
-                    right_moves=[(1, scanner.move_up), (10, scanner.move_up), (60, scanner.move_up),
-                                 (120, scanner.move_up)],
+                    left_moves=[(120, get_scanner().move_down), (60, get_scanner().move_down), (10, get_scanner().move_down),
+                                (1, get_scanner().move_down)],
+                    right_moves=[(1, get_scanner().move_up), (10, get_scanner().move_up), (60, get_scanner().move_up),
+                                 (120, get_scanner().move_up)],
                 )
 
                 home_state = {'ok': False}  # startup: NOT homed => HOME stays orange until successful homing
@@ -675,7 +719,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                         if _scanner_has_alarm():
                             return False
                         try:
-                            if scanner.get_position() is not None:
+                            if get_scanner().get_position() is not None:
                                 return True
                         except Exception:
                             pass
@@ -685,9 +729,9 @@ if __name__ in {"__main__", "__mp_main__"}:
 
                 async def home_and_update():
                     # Run homing, then mark OK if we are not in ALARM after a brief settle period.
-                    await safe_move(scanner.home)
-                    home_state['ok'] = await _wait_for_home_settle()
-                    _set_home_button_color('green' if home_state['ok'] else 'orange')
+                    await safe_move(get_scanner().home)
+                    scanner_app.home_state['ok'] = await _wait_for_home_settle()
+                    _set_home_button_color('green' if scanner_app.home_state['ok'] else 'orange')
 
 
                 # --- HOME / Clear Alarm / Soft Reset / REHOME row (like image) ---
@@ -700,12 +744,12 @@ if __name__ in {"__main__", "__mp_main__"}:
 
                     ui.button(
                         'Clear\nAlarm',
-                        on_click=log_button_click('Clear Alarm', lambda: run.io_bound(scanner.clear_alarm)),
+                        on_click=log_button_click('Clear Alarm', lambda: run.io_bound(get_scanner().clear_alarm)),
                     ).classes('cmd-btn cmd-btn-blue')
 
                     ui.button(
                         'Soft\nReset',
-                        on_click=log_button_click('Soft Reset', lambda: run.io_bound(scanner.softreset)),
+                        on_click=log_button_click('Soft Reset', lambda: run.io_bound(get_scanner().softreset)),
                     ).classes('cmd-btn cmd-btn-blue')
 
                     ui.button(
@@ -716,7 +760,7 @@ if __name__ in {"__main__", "__mp_main__"}:
                     ui.button(
                         'HOLD',
                         color='red',
-                        on_click=log_button_click('Hold', lambda: run.io_bound(scanner.hold)),
+                        on_click=log_button_click('Hold', lambda: run.io_bound(get_scanner().hold)),
                     ).classes('cmd-btn')
 
                 with ui.button_group():
@@ -725,11 +769,11 @@ if __name__ in {"__main__", "__mp_main__"}:
                         'Set height offset',
                         on_click=log_button_click(
                             'Set height offset',
-                            lambda: run.io_bound(scanner.set_speaker_center_above_stool, height_input.value),
+                            lambda: run.io_bound(get_scanner().set_speaker_center_above_stool, height_input.value),
                         ),
                     )
 
-                greyable_buttons.append(
+                scanner_app.greyable_buttons.append(
                     ui.button(
                         'Zero NFS',
                         color='orange',
@@ -741,14 +785,15 @@ if __name__ in {"__main__", "__mp_main__"}:
                 )
 
                 with ui.button_group():
-                    greyable_buttons.append(
+                    scanner_app.greyable_buttons.append(
                         ui.button('Start measurements', on_click=log_button_click('Start measurements', async_task)))
-                    greyable_buttons.append(ui.button('Take single measurement',
+                    scanner_app.greyable_buttons.append(ui.button('Take single measurement',
                                                       on_click=log_button_click('Take single measurement',
                                                                                 async_single_measurement_task)))
 
                 # --- Start/Stop NFS moved to the bottom of the button stack ---
                 with ui.row().classes('items-center mt-1 gap-4'):
+                    ui.button('Reload Config', icon='sync', on_click=scanner_app.reload_config_ui).classes('bg-blue-200 text-blue-900')
                     with ui.row().classes('items-center gap-2'):
                         level_input = ui.number('Level (dBFS)', value=-20, format='%.1f').props('dense outlined').classes('w-32')
                         freq_input = ui.number('Frequency (Hz)', value=1000, format='%d').props('dense outlined').classes('w-32')
@@ -830,7 +875,7 @@ if __name__ in {"__main__", "__mp_main__"}:
     def _get_raw_state_string():
         """scanner.get_state() returns a GrblMachineState enum; show its raw string."""
         try:
-            st = scanner.get_state()
+            st = get_scanner().get_state()
             if st is None:
                 return None
             # Return only the enum name (e.g., 'IDLE' instead of 'GrblStateMachine.IDLE')
@@ -845,7 +890,7 @@ if __name__ in {"__main__", "__mp_main__"}:
         def do_update():
             nonlocal pos, state
             if pos is None:
-                pos = scanner.get_position()
+                pos = get_scanner().get_position()
             if pos is not None:
                 pos_r.set_text(f'{pos.r():7.2f}')
                 pos_t.set_text(f'{pos.t():7.2f}')
@@ -871,13 +916,13 @@ if __name__ in {"__main__", "__mp_main__"}:
                 pos_state.classes(remove='text-[#7eff00]').classes(add='text-red-600 alarm_blink')
 
                 # During/after alarm: HOME must be orange until a successful home is performed
-                home_state['ok'] = False
+                scanner_app.home_state['ok'] = False
                 _set_home_button_color('orange')
             else:
                 # Reset to the original green color when not in alarm
                 pos_state.classes(remove='text-red-600 alarm_blink').classes(add='text-[#7eff00]')
 
-                _set_home_button_color('green' if home_state['ok'] else 'orange')
+                _set_home_button_color('green' if scanner_app.home_state['ok'] else 'orange')
 
         # Schedule the update on the main event loop to be thread-safe
         try:
@@ -890,13 +935,13 @@ if __name__ in {"__main__", "__mp_main__"}:
             do_update()
 
 
-    scanner.set_on_state_update_callback(update_scanner_position)
+    get_scanner().set_on_state_update_callback(update_scanner_position)
 
     # Note: Using ui.timer instead of a raw background loop so it shuts down cleanly with NiceGUI
     ui.timer(1.0, lambda: watch_file(plot, ir_fr_plot))
 
     # Start measurements if nfs exists
-    if nfs:
+    if get_nfs():
         update_ir_fr_plots(ir_fr_plot)
 
     ui.run(reload=False)

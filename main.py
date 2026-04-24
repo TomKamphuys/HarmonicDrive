@@ -165,10 +165,6 @@ ui.add_css("""
 """)
 
 
-def start_nfs():
-    pass
-
-
 def stop_nfs():
     print('Stopping NFS')
     global is_playing
@@ -737,8 +733,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                         dur_input = ui.number('Duration (s)', value=None, format='%.1f').props('dense outlined').classes('w-32')
                         play_button = ui.button(icon='play_arrow', on_click=log_button_click('Play Sine', async_play_sine_task)).props('round')
 
-                    with ui.button_group():
-                        ui.button('Start NFS', color='green', on_click=log_button_click('Start NFS', start_nfs))
                         ui.button('Stop NFS', color='red', on_click=log_button_click('Stop NFS', stop_nfs))
                     ui.button('Show Logs', icon='list', on_click=log_dialog.open).classes('ml-2')
 
